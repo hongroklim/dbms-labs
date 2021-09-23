@@ -5,3 +5,4 @@ SELECT T.name
  WHERE T.id = CP.owner_id
    AND CP.pid = P.id
    AND P.name = 'Pikachu'
+ ORDER BY T.name;
