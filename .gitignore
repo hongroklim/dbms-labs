@@ -1,2 +1,10 @@
+# IDE
 .idea
+.vscode
+
+# for development
 _drafts
+
+# build directory
+build
+cmake-build-debug
