@@ -1,6 +1,7 @@
 #include "gtest/gtest.h"
 
 #include "file.h"
+#include "page.h"
 
 #include <iostream>
 #include <fcntl.h>
@@ -10,15 +11,17 @@ public:
     static const char * pathname;
 
 protected:
-    int fd;
+    int64_t table_id{};
+    int fd{};
 
     void SetUp() override {
         remove(FileManagerTest::pathname);
-        fd = file_open_database_file(FileManagerTest::pathname);
+        table_id = file_open_table_file(FileManagerTest::pathname);
+        fd = file_get_fd(table_id);
     }
 
     void TearDown() override {
-        file_close_database_file();
+        file_close_table_files();
     }
 };
 
@@ -37,7 +40,8 @@ TEST(FileinitializerTest, initialization){
     EXPECT_EQ(open(FileManagerTest::pathname, O_RDONLY), -1);
 
     // open file
-    int fd = file_open_database_file(FileManagerTest::pathname);
+    int64_t table_id = file_open_table_file(FileManagerTest::pathname);
+    int fd = file_get_fd(table_id);
     EXPECT_GT(fd, 0);
 
     // the number of total pages
@@ -52,7 +56,7 @@ TEST(FileinitializerTest, initialization){
     EXPECT_EQ(fStat.st_size, INITIAL_DB_FILE_SIZE);
 
     // close
-    file_close_database_file();
+    file_close_table_files();
 
     // then remove database file
     EXPECT_EQ(remove(FileManagerTest::pathname), 0);
@@ -71,7 +75,7 @@ TEST_F(FileManagerTest, scaleFileSize){
     fdatasync(fd);
 
     // trick as no free pages then allocate pages
-    file_alloc_page(fd);
+    file_alloc_page(table_id);
 
     // the number of total pages
     lseek(fd, sizeof(pagenum_t), SEEK_SET);
@@ -128,11 +132,11 @@ TEST_F(FileManagerTest, chainingFreePages){
  */
 TEST_F(FileManagerTest, pageManagement){
     // allocate two pages
-    pagenum_t allocPage1 = file_alloc_page(fd),
-              allocPage2 = file_alloc_page(fd);
+    pagenum_t allocPage1 = file_alloc_page(table_id),
+              allocPage2 = file_alloc_page(table_id);
 
     // free one of them
-    file_free_page(fd, allocPage1);
+    file_free_page(table_id, allocPage1);
 
     // get total number of pages
     pagenum_t expectedCnt;
@@ -166,25 +170,26 @@ TEST_F(FileManagerTest, pageManagement){
  * same.
  */
 TEST_F(FileManagerTest, pageIO){
-    struct page_t input {}, output {};
+    auto* input = new page_t();
+    auto*output = new page_t();
 
     for(int i=1; i<=4096; i++){
-        input.data[i-1] = static_cast<char>(i);
+        input->data[i-1] = static_cast<char>(i);
     }
 
     // allocate
-    pagenum_t pNum = file_alloc_page(fd);
+    pagenum_t pNum = file_alloc_page(table_id);
 
     // write
-    file_write_page(fd, pNum, &input);
+    file_write_page(table_id, pNum, input);
 
     // read
-    file_read_page(fd, pNum, &output);
+    file_read_page(table_id, pNum, output);
 
     // compare all elements both arrays
     for(int i=0; i<=4095; i++){
-        EXPECT_EQ(input.data[i], output.data[i])
-            << "index of " << i << " : " << input.data[i] << ", " << output.data[i];
+        EXPECT_EQ(input->data[i], output->data[i])
+            << "index of " << i << " : " << input->data[i] << ", " << output->data[i];
         
     }
 }
