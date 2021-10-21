@@ -16,6 +16,7 @@ public:
     NodePage(int64_t p_table_id, pagenum_t p_pagenum, page_t* p_page) : AbstractPage(p_table_id, p_pagenum, p_page) {}
     NodePage(int64_t p_table_id, pagenum_t p_pagenum) : AbstractPage(p_table_id, p_pagenum) {}
     explicit NodePage(int64_t p_table_id);
+    NodePage() = default;
 
     // Setter
     void setParentPageNum(pagenum_t parentnum);

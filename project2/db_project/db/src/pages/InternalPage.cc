@@ -98,7 +98,8 @@ void InternalPage::setKeyAndPagenum(uint index, int64_t key, pagenum_t p_pagenum
 }
 
 bool InternalPage::isInsertAvailable(uint key_num){
-    return key_num + getNumberOfKeys() <= 248 - 1;
+    uint totalNum = getNumberOfKeys();
+    return key_num + totalNum <= 248 - 1;
 }
 
 bool InternalPage::isInsertAvailable(){
@@ -256,34 +257,39 @@ void InternalPage::concat(InternalPage* victim, uint keyNum, bool isAppend){
     }else{
         // Case2. concat ahead the first
 
-        // shift key and pagenum
-        uint16_t victimSize = keyNum * 16 + 8;
-        page_move_value(page, 120+victimSize+8, 120, getNumberOfKeys() * 16 + 8);
+        uint16_t victimSize = keyNum * 16;
 
         // for current one, get leftmost key
-        NodePage leftmostNode(victim->getTableId(), getNodePagenumByIndex(0));
+        NodePage leftmostNode(getTableId(), getNodePagenumByIndex(0));
         int64_t leftmostKey = leftmostNode.getLeftMostKey();
-        page_write_value(page, 120+victimSize, &leftmostKey, sizeof(int64_t));
+
+        // shift key and pagenum
+        page_move_value(page, 120+victimSize, 120, getNumberOfKeys() * 16);
+        page_write_value(page, 120+victimSize-8, &leftmostKey, sizeof(int64_t));
 
         // direct insert the leftmost pagenum
-        p_pagenum = victim->getNodePagenumByIndex(0);
+        uint victimKeyNum = victim->getNumberOfKeys();
+        p_pagenum = victim->getNodePagenumByIndex(victimKeyNum);
+        victim->delRightmostPage();
         page_write_value(page, 120, &p_pagenum, sizeof(p_pagenum));
 
         // insert remains
-        for(uint i=0; i<keyNum; i++){
-            key = victim->getKey(i);
-            p_pagenum = victim->getNodePagenumByIndex(i + 1);
+        for(uint i=1; i<keyNum; i++){
+            key = victim->getKey(victimKeyNum-i);
+            p_pagenum = victim->getNodePagenumByIndex(victimKeyNum-i + 1);
 
+            victim->delRightmostPage();
             setKeyAndPagenum(i, key, p_pagenum);
         }
+
+        // increase the number of keys
+        setNumberOfKeys(getNumberOfKeys() + keyNum + 1);
     }
 
-    // increase the number of keys
-    setNumberOfKeys(getNumberOfKeys() + keyNum);
-
     // change its parent pagenum to new one
+    uint totalKeyNum = getNumberOfKeys();
     NodePage* childNode;
-    for(uint i=0; i<=getNumberOfKeys(); i++){
+    for(uint i=0; i<=totalKeyNum; i++){
         childNode = new NodePage(getTableId(), getNodePagenumByIndex(i));
         childNode->setParentPageNum(getPagenum());
         childNode->save();
@@ -302,15 +308,16 @@ void InternalPage::redistribute(InternalPage* srcInternal, bool fromLeft){
     uint16_t freeSpace = getAmountOfFreeSpace();
     
     // calculate required numbers
-    uint concatNum = ceil((freeSpace - FREE_SPACE_THRESHOLD - 8) / 16);
+    uint concatNum = (freeSpace - FREE_SPACE_THRESHOLD - 8) / 16;
     
     // concatination
-    concat(srcInternal, concatNum, !fromLeft);
+    concat(srcInternal, concatNum == 0 ? 1 : concatNum, !fromLeft);
 }
 
 void InternalPage::print() {
+    uint keyNum = getNumberOfKeys();
     std::cout << getPagenum() << " : "<< getNodePagenumByIndex(0);
-    for(int i=0; i<getNumberOfKeys(); i++){
+    for(int i=0; i<keyNum; i++){
         std::cout << " (" << getKey(i) << ") ";
         std::cout << getNodePagenumByIndex(i+1) << " ";
     }
@@ -320,5 +327,11 @@ void InternalPage::print() {
 void InternalPage::delLeftmostPage(){
     uint keyNum = getNumberOfKeys();
     page_move_value(page, 120, 128 + 8, getNumberOfKeys() * 16 - 8);
+    setNumberOfKeys(keyNum-1);
+}
+
+void InternalPage::delRightmostPage() {
+    uint keyNum = getNumberOfKeys();
+    page_write_value(page, 128 + (keyNum*16), nullptr, 16);
     setNumberOfKeys(keyNum-1);
 }

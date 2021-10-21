@@ -91,7 +91,7 @@ TEST(ApiTest, main){
 	std::cout << "[TEST START]\n";
 	for (const auto& t: tables) {
 		std::cout << "[TABLE : " << t.first << " START]\n";
-		// std::shuffle(key_value_pairs.begin(), key_value_pairs.end(), rng);
+		std::sort(key_value_pairs.begin(), key_value_pairs.end(), std::greater<>());
 		std::cout << "[INSERT START]\n";
 		for (const auto& kv: key_value_pairs) {
 			if (db_insert(t.second, kv.first, const_cast<char*>(kv.second.c_str()), kv.second.size()) != 0) {
@@ -99,14 +99,12 @@ TEST(ApiTest, main){
 			}
 		}
 		std::cout << "[INSERT END]\n";
-
-        // std::shuffle(key_value_pairs.begin(), key_value_pairs.end(), rng);
-
 		std::cout << "[FIND START]\n";
 		for (const auto& kv: key_value_pairs) {
 			ret_size = 0;
 			memset(ret_value, 0x00, MAX_VAL_SIZE);
-			if (db_find(t.second, kv.first, ret_value, &ret_size) != 0) {
+            std::cout << "find " << kv.first << std::endl;
+            if (db_find(t.second, kv.first, ret_value, &ret_size) != 0) {
                 std::cout << "failed to find " << kv.first << std::endl;
 				goto func_exit;
 			} else if (kv.second.size() != ret_size ||

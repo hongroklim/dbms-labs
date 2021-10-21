@@ -233,17 +233,23 @@ int64_t internal_split_insert(InternalPage* srcNode, InternalPage* newNode, int6
     uint splitIndex = srcNode->findSplitIndex(insertionIdx);
 
     // keep key reference
-    int64_t splitKey = srcNode->getKey(splitIndex);
+    int64_t splitKey;
 
     if(insertionIdx < splitIndex){
         // split-1 then insert into exist
+        splitKey = srcNode->getKey(splitIndex-1);
         srcNode->split(splitIndex - 1, newNode);
         srcNode->insert(key, r_pagenum);
 
     }else{
         // split then insert into new one
+        splitKey = srcNode->getKey(splitIndex);
         srcNode->split(splitIndex, newNode);
         newNode->insert(key, r_pagenum);
+
+        if(insertionIdx == 0){
+
+        }
     }
 
     // delete leftmost
@@ -336,7 +342,8 @@ int db_delete(int64_t table_id, int64_t key){
     int retVal = 0;
     try{
         node_delete_key(table_id, pagenum, key);
-    }catch(...){
+    }catch(std::exception &e){
+        std::cout << e.what() << std::endl;
         retVal = -2;
     }
 
@@ -354,13 +361,8 @@ void node_delete_key(int64_t table_id, pagenum_t pagenum, int64_t key){
     }
 
     // delete entry
-    uint prevNum = nodePage->getNumberOfKeys();
     nodePage->del(key);
     nodePage->save();
-    uint afterNum = nodePage->getNumberOfKeys();
-    if(prevNum - 1 != afterNum){
-        std::cout << prevNum << std::endl;
-    }
 
     node_reorganize(nodePage);
 
@@ -368,6 +370,26 @@ void node_delete_key(int64_t table_id, pagenum_t pagenum, int64_t key){
 }
 
 void node_reorganize(NodePage* nodePage){
+    if(nodePage->getParentPagenum() == 0 && !nodePage->isLeaf() && nodePage->getNumberOfKeys() == 0){
+        std::cout << "pull up the only node under " << nodePage->getPagenum() << std::endl;
+        // instead of convert
+        InternalPage* oldRootNode = InternalPage::convert(nodePage);
+
+        // move up child to node
+        HeaderPage headerPage(oldRootNode->getTableId());
+        headerPage.setRootPagenum(oldRootNode->getNodePagenumByIndex(0));
+        headerPage.save();
+
+        // change parent pagenum
+        NodePage newRootNode(headerPage.getTableId(), headerPage.getRootPagenum());
+        newRootNode.setParentPageNum(0);
+        newRootNode.save();
+
+        // set empty
+        nodePage = new NodePage();
+        return;
+    }
+
     // if root node or no need to change
     if(nodePage->getParentPagenum() == 0 || !nodePage->isRearrangeRequired()){
         return;
@@ -380,7 +402,6 @@ void node_reorganize(NodePage* nodePage){
 
     // calculate sibling index, pagenum
     uint siblingIndex = nodeIndex == 0 ? 1 : nodeIndex - 1;
-    parentPage->print();
     pagenum_t siblingPagenum = parentPage->getNodePagenumByIndex(siblingIndex);
     int16_t siblingKey = parentPage->getKey(siblingIndex-1);
 
@@ -407,6 +428,7 @@ void leaf_reorganize(LeafPage* node, LeafPage* sibling, int64_t nodeKey, int64_t
         // absorb all values
         sibling->absorbAll(node, !leftMostNode);
         sibling->save();
+        node->drop();
 
         // modify outside nodes
         if(leftMostNode){
@@ -416,9 +438,6 @@ void leaf_reorganize(LeafPage* node, LeafPage* sibling, int64_t nodeKey, int64_t
             sibling->setRightPagenum(node->getRightPagenum());
             node_delete_key(sibling->getTableId(), sibling->getParentPagenum(), nodeKey);
         }
-
-
-        node->drop();
 
     }else{
         // redistribute
@@ -442,6 +461,9 @@ void leaf_reorganize(LeafPage* node, LeafPage* sibling, int64_t nodeKey, int64_t
 void internal_reorganize(InternalPage* node, InternalPage* sibling, int64_t nodeKey, int64_t siblingKey, bool leftMostNode){
     std::cout << "reorg internals " << node->getPagenum() << "(" << nodeKey << ")" << " & " << sibling->getPagenum() << "(" << siblingKey << ")\n";
 
+    node->print();
+    sibling->print();
+
     if(sibling->isMergeAvailable(node)){
         // absorb all values
         sibling->absorbAll(node, !leftMostNode);
@@ -458,9 +480,12 @@ void internal_reorganize(InternalPage* node, InternalPage* sibling, int64_t node
     }else{
         // redistribute
         node->redistribute(sibling, !leftMostNode);
-        node->save();
 
+        node->save();
         sibling->save();
+
+        node->print();
+        sibling->print();
 
         if(leftMostNode){
             // when sibling is right side
@@ -468,7 +493,7 @@ void internal_reorganize(InternalPage* node, InternalPage* sibling, int64_t node
             internal_alter_key(sibling->getTableId(), sibling->getParentPagenum(), siblingKey, sibling->getLeftMostKey());
         }else{
             // when node is right side
-            std::cout << "alter key " << nodeKey << " to " << node->getLeftMostKey() << std::endl;
+            InternalPage leftMost(node->getTableId(), node->getNodePagenumByIndex(0));
             internal_alter_key(node->getTableId(), node->getParentPagenum(), nodeKey, node->getLeftMostKey());
         }
     }

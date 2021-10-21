@@ -46,6 +46,7 @@ public:
     void del(int64_t key) override;
     void alterKey(int64_t oldKey, int64_t newKey);
     void delLeftmostPage();
+    void delRightmostPage();
 
     bool isMergeAvailable(InternalPage* toBeMerged);
     void absorbAll(InternalPage* victim, bool isAppend);
