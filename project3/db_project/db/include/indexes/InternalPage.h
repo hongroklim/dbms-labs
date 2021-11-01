@@ -11,7 +11,7 @@ private:
     void setKeyAndPagenum(uint index, int64_t key, pagenum_t p_pagenum);
 
     void del_to_end(uint beginIndex);
-    void concat(InternalPage* victim, uint keyNum, bool isAppend);
+    void changeChildParentPagenum(pagenum_t child_pagenum);
 
 public:
     // Constructor
@@ -49,8 +49,8 @@ public:
     void delRightmostPage();
 
     bool isMergeAvailable(InternalPage* toBeMerged);
-    void absorbAll(InternalPage* victim, bool isAppend);
-    void redistribute(InternalPage* srcInternal, bool fromLeft);
+    void absorbAll(InternalPage* victim, int64_t hiddenKey, bool fromLeft);
+    void absorbOne(InternalPage* neighbor, int64_t hiddenKey, bool fromLeft);
 
     void print() override;
 };

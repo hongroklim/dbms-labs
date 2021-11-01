@@ -417,6 +417,11 @@ void node_reorganize(NodePage* nodePage){
     pagenum_t siblingPagenum = parentPage->getNodePagenumByIndex(siblingIndex);
     int16_t siblingKey = parentPage->getKey(siblingIndex-1);
 
+    if(!nodePage->isLeaf())
+        parentPage->print();
+    
+    delete parentPage;
+
     if(nodePage->isLeaf()){
         // reorganize leaf page
         LeafPage* siblingPage = new LeafPage(nodePage->getTableId(), siblingPagenum);
@@ -429,15 +434,14 @@ void node_reorganize(NodePage* nodePage){
         internal_reorganize((InternalPage*)nodePage, siblingPage, nodeKey, siblingKey, nodeIndex == 0);
         delete siblingPage;
     }
-
-    delete parentPage;
 }
 
 void leaf_reorganize(LeafPage* node, LeafPage* sibling, int64_t nodeKey, int64_t siblingKey, bool leftMostNode){
-    //std::cout << "reorg leaves " << node->getPagenum() << "(" << nodeKey << ")" << " & " << sibling->getPagenum() << "(" << siblingKey << ")\n";
+    std::cout << "reorg leaves " << node->getPagenum() << "(" << nodeKey << ")" << " & " << sibling->getPagenum() << "(" << siblingKey << ") ";
 
     if(sibling->isMergeAvailable(node)){
         // absorb all values
+        std::cout << "absorb (all)" << std::endl;
         sibling->absorbAll(node, !leftMostNode);
         sibling->save();
 
@@ -455,6 +459,7 @@ void leaf_reorganize(LeafPage* node, LeafPage* sibling, int64_t nodeKey, int64_t
 
     }else{
         // redistribute
+        std::cout << "redistribute (one)" << std::endl;
         node->redistribute(sibling, !leftMostNode);
 
         node->save();
@@ -462,23 +467,29 @@ void leaf_reorganize(LeafPage* node, LeafPage* sibling, int64_t nodeKey, int64_t
 
         if(leftMostNode){
             // when sibling is right side
-            //std::cout << "alter key " << siblingKey << " to " << sibling->getLeftMostKey() << std::endl;
             internal_alter_key(sibling->getTableId(), sibling->getParentPagenum(), siblingKey, sibling->getLeftMostKey());
         }else{
             // when node is right side
-            //std::cout << "alter key " << nodeKey << " to " << node->getLeftMostKey() << std::endl;
             internal_alter_key(node->getTableId(), node->getParentPagenum(), nodeKey, node->getLeftMostKey());
         }
     }
 }
 
 void internal_reorganize(InternalPage* node, InternalPage* sibling, int64_t nodeKey, int64_t siblingKey, bool leftMostNode){
-    //std::cout << "reorg internals " << node->getPagenum() << "(" << nodeKey << ")" << " & " << sibling->getPagenum() << "(" << siblingKey << ")\n";
-
+    std::cout << "reorg internals " << node->getPagenum() << "(" << nodeKey << ")" << " & " << sibling->getPagenum() << "(" << siblingKey << ") ";
+    //node->print();
+    //sibling->print();
     if(sibling->isMergeAvailable(node)){
         // absorb all values
-        sibling->absorbAll(node, !leftMostNode);
+        std::cout << "absorb (all)" << std::endl;
+
+        int64_t hiddenKey = leftMostNode ? siblingKey : nodeKey;
+
+        sibling->absorbAll(node, hiddenKey, leftMostNode);
         sibling->save();
+
+        //node->print();
+        //sibling->print();
 
         node->drop();
 
@@ -491,23 +502,22 @@ void internal_reorganize(InternalPage* node, InternalPage* sibling, int64_t node
 
     }else{
         // redistribute
-        node->redistribute(sibling, !leftMostNode);
+        std::cout << "redistribute (one)" << std::endl;
+
+        // keep the original values
+        int64_t hiddenKey = leftMostNode ? siblingKey : nodeKey;
+        int64_t tobeKey = leftMostNode ? sibling->getKey(0) : sibling->getKey(sibling->getNumberOfKeys()-1);
+        
+        node->absorbOne(sibling, hiddenKey, !leftMostNode);
+
+        //node->print();
+        //sibling->print();
 
         sibling->save();
         node->save();
 
-        //sibling->print();
-        //node->print();
-
-        if(leftMostNode){
-            // when sibling is right side
-            //std::cout << "alter key " << siblingKey << " to " << sibling->getLeftMostKey() << std::endl;
-            internal_alter_key(sibling->getTableId(), sibling->getParentPagenum(), siblingKey, sibling->getLeftMostKey());
-        }else{
-            // when node is right side
-            //InternalPage leftMost(node->getTableId(), node->getNodePagenumByIndex(0));
-            internal_alter_key(node->getTableId(), node->getParentPagenum(), nodeKey, node->getLeftMostKey());
-        }
+        // change parent's key value
+        internal_alter_key(node->getTableId(), node->getParentPagenum(), hiddenKey, tobeKey);
     }
 }
 
@@ -521,6 +531,7 @@ void internal_alter_key(int64_t table_id, pagenum_t pagenum, int64_t oldKey, int
 void internal_delete_leftmost(int64_t table_id, pagenum_t pagenum){
     InternalPage* internalPage = new InternalPage(table_id, pagenum);
 
+    // it will delete the leftmost pagenum and key.
     internalPage->delLeftmostPage();
     internalPage->save();
 

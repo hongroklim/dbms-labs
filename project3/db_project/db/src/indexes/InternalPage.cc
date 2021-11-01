@@ -2,6 +2,8 @@
 
 #include <iostream>
 #include <math.h>
+#include <vector>
+#include <algorithm>
 
 InternalPage::InternalPage(int64_t p_table_id) : NodePage(p_table_id) {
     // set is leaf to 0
@@ -236,90 +238,87 @@ bool InternalPage::isMergeAvailable(InternalPage* toBeMerged){
     return isInsertAvailable(toBeMerged->getNumberOfKeys() + 1);
 }
 
-void InternalPage::concat(InternalPage* victim, uint keyNum, bool isAppend){
+void InternalPage::changeChildParentPagenum(pagenum_t child_pagenum){
+    // change the moved one's parent
+    NodePage* childNode;
+    childNode = new NodePage(getTableId(), child_pagenum);
+    childNode->setParentPageNum(getPagenum());
+    childNode->save();
+    delete childNode;
+}
+
+// move entire elements from victim into this
+void InternalPage::absorbAll(InternalPage* victim, int64_t hiddenKey, bool fromLeft){
     int64_t key;
-    pagenum_t p_pagenum;
+    pagenum_t movePagenum;
 
-    if(isAppend){
-        // Case1. concat behind the last
-        NodePage* leftmostNode = new NodePage(victim->getTableId(), victim->getNodePagenumByIndex(0));
-        int64_t lKey = leftmostNode->getLeftMostKey();
-        pagenum_t lPagenum = leftmostNode->getPagenum();
-        delete leftmostNode;
+    uint keyNum = getNumberOfKeys();
+    uint victimNum = victim->getNumberOfKeys();
+    
+    if(fromLeft){
+        // insert ahead
+        page_move_value(page, 120+((victimNum+1)*16), 120, keyNum*16 + 8);   // shift first
 
-        // for victim, get leftmost key and pagenum
-        insert(lKey, lPagenum);
-
-        // append the remains
-        for(uint i=0; i<keyNum; i++){
-            key = victim->getKey(i);
-            p_pagenum = victim->getNodePagenumByIndex(i + 1);
-
-            insert(key, p_pagenum);
-        }
-
-    }else{
-        // Case2. concat ahead the first
-
-        uint16_t victimSize = keyNum * 16;
-
-        // for current one, get leftmost key
-        NodePage leftmostNode(getTableId(), getNodePagenumByIndex(0));
-        int64_t leftmostKey = leftmostNode.getLeftMostKey();
-
-        // shift key and pagenum
-        page_move_value(page, 120+victimSize, 120, getNumberOfKeys() * 16 + 8);
-        page_write_value(page, 120+victimSize-8, &leftmostKey, sizeof(int64_t));
-
-        // direct insert the leftmost pagenum
-        uint victimKeyNum = victim->getNumberOfKeys();
-        p_pagenum = victim->getNodePagenumByIndex(victimKeyNum);
-        victim->delRightmostPage();
-        page_write_value(page, 120, &p_pagenum, sizeof(p_pagenum));
+        // insert the leftmost pagenum
+        movePagenum = victim->getNodePagenumByIndex(0);
+        page_write_value(page, 120, &movePagenum, sizeof(pagenum_t));
+        changeChildParentPagenum(movePagenum);
 
         // insert remains
-        for(uint i=1; i<keyNum; i++){
-            key = victim->getKey(victimKeyNum-i);
-            p_pagenum = victim->getNodePagenumByIndex(victimKeyNum-i + 1);
-
-            victim->delRightmostPage();
-            setKeyAndPagenum(i, key, p_pagenum);
+        for(uint i=0; i<victimNum; i++){
+            key = victim->getKey(i);
+            movePagenum = victim->getNodePagenumByIndex(i+1);
+            setKeyAndPagenum(i, key, movePagenum);
+            changeChildParentPagenum(movePagenum);
         }
 
-        // increase the number of keys
-        setNumberOfKeys(getNumberOfKeys() + keyNum);
-    }
+        // insert hidden key
+        page_write_value(page, 120+((victimNum+1)*16)-8, &hiddenKey, sizeof(int64_t));
 
-    // change its parent pagenum to new one
-    uint totalKeyNum = getNumberOfKeys();
-    NodePage* childNode;
-    for(uint i=0; i<=totalKeyNum; i++){
-        childNode = new NodePage(getTableId(), getNodePagenumByIndex(i));
-        childNode->setParentPageNum(getPagenum());
-        childNode->save();
-        delete childNode;
+    }else{
+        // insert behind
+        movePagenum = victim->getNodePagenumByIndex(0);
+        setKeyAndPagenum(keyNum, hiddenKey, movePagenum);
+        changeChildParentPagenum(movePagenum);
+
+        // insert remains
+        for(uint i=0; i<victimNum; i++){
+            key = victim->getKey(i);
+            movePagenum = victim->getNodePagenumByIndex(i+1);
+            setKeyAndPagenum(keyNum + i+1, key, movePagenum);
+            changeChildParentPagenum(movePagenum);
+        }
     }
+    
+    // sum of keys, plus hidden key (derived from the parent)
+    setNumberOfKeys(keyNum+victim->getNumberOfKeys()+1);
+    victim->setNumberOfKeys(0);
 }
 
-void InternalPage::absorbAll(InternalPage* victim, bool isAppend){
-    concat(victim, victim->getNumberOfKeys(), isAppend);
-}
+// get a single element from neighbor
+void InternalPage::absorbOne(InternalPage* neighbor, int64_t hiddenKey, bool fromLeft){
+    pagenum_t movePagenum;
+    if(fromLeft){
+        // insert ahead
+        page_move_value(page, 120+16, 120, getNumberOfKeys()*16 + 8);   // shift first
+        
+        movePagenum = neighbor->getNodePagenumByIndex(neighbor->getNumberOfKeys()-1);
+        page_write_value(page, 120, &movePagenum, sizeof(pagenum_t));
+        page_write_value(page, 128, &hiddenKey, sizeof(int64_t));
+        neighbor->delRightmostPage();
 
-/*
- * get values from right side to fill threshold
- */
-void InternalPage::redistribute(InternalPage* srcInternal, bool fromLeft){
-    uint16_t freeSpace = getAmountOfFreeSpace();
-    
-    // calculate required numbers
-    uint concatNum = (freeSpace - FREE_SPACE_THRESHOLD - 8) / 16;
-    
-    if(concatNum == 0){
-        concatNum = 1;
+    }else{
+        // insert behind
+        movePagenum = neighbor->getNodePagenumByIndex(0);
+        setKeyAndPagenum(getNumberOfKeys(), hiddenKey, movePagenum);
+        neighbor->delLeftmostPage();
     }
+    
+    // change child's parent pagenum
+    changeChildParentPagenum(movePagenum);
 
-    // concatination
-    concat(srcInternal, concatNum == 0 ? 1 : concatNum, !fromLeft);
+    // change the number of keys
+    setNumberOfKeys(getNumberOfKeys()+1);
 }
 
 void InternalPage::print() {
