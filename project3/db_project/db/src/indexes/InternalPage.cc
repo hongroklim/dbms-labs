@@ -291,7 +291,7 @@ void InternalPage::absorbAll(InternalPage* victim, int64_t hiddenKey, bool fromL
     }
     
     // sum of keys, plus hidden key (derived from the parent)
-    setNumberOfKeys(keyNum+victim->getNumberOfKeys()+1);
+    setNumberOfKeys(keyNum + victimNum + 1);
     victim->setNumberOfKeys(0);
 }
 
@@ -302,7 +302,7 @@ void InternalPage::absorbOne(InternalPage* neighbor, int64_t hiddenKey, bool fro
         // insert ahead
         page_move_value(page, 120+16, 120, getNumberOfKeys()*16 + 8);   // shift first
         
-        movePagenum = neighbor->getNodePagenumByIndex(neighbor->getNumberOfKeys()-1);
+        movePagenum = neighbor->getNodePagenumByIndex(neighbor->getNumberOfKeys());
         page_write_value(page, 120, &movePagenum, sizeof(pagenum_t));
         page_write_value(page, 128, &hiddenKey, sizeof(int64_t));
         neighbor->delRightmostPage();
@@ -326,7 +326,7 @@ void InternalPage::print() {
     std::cout << getPagenum() << " : "<< getNodePagenumByIndex(0);
     for(int i=0; i<keyNum; i++){
         std::cout << " (" << getKey(i) << ") ";
-        std::cout << getNodePagenumByIndex(i+1) << " ";
+        std::cout << getNodePagenumByIndex(i+1);
     }
     std::cout << std::endl;
 }

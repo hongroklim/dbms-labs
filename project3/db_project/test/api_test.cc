@@ -96,7 +96,8 @@ TEST(ApiTest, main){
 	std::cout << "[TEST START]\n";
 	for (const auto& t: tables) {
 		std::cout << "[TABLE : " << t.first << " START]\n";
-		std::sort(key_value_pairs.begin(), key_value_pairs.end(), std::greater<>());
+		//std::sort(key_value_pairs.begin(), key_value_pairs.end(), std::less<>());
+		std::shuffle(key_value_pairs.begin(), key_value_pairs.end(), rng);
 		std::cout << "[INSERT START]\n";
 		for (const auto& kv: key_value_pairs) {
 			// std::cout << "insert " << kv.first << std::endl;
@@ -122,7 +123,7 @@ TEST(ApiTest, main){
 		std::cout << "[FIND END]\n";
         std::cout << "[DELETE START]\n";
 		for (const auto& kv: key_value_pairs) {
-            std::cout << "delete " << kv.first << std::endl;
+            //std::cout << "delete " << kv.first << std::endl;
 			if (db_delete(t.second, kv.first) != 0) {
                 std::cout << "failed to delete " << kv.first << std::endl;
                 goto func_exit;

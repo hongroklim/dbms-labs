@@ -300,7 +300,7 @@ LeafPage* node_find_candidate_leaf(int64_t table_id, int64_t key, bool isExact){
         // convert internal node
         internalPage = InternalPage::convert(nodePage);
         //internalPage->print();
-
+        
         // get next pagenum
         if(key < internalPage->getLeftMostKey() || !isExact){
             pagenum = internalPage->getNodePagenum(key);
@@ -417,9 +417,6 @@ void node_reorganize(NodePage* nodePage){
     pagenum_t siblingPagenum = parentPage->getNodePagenumByIndex(siblingIndex);
     int16_t siblingKey = parentPage->getKey(siblingIndex-1);
 
-    if(!nodePage->isLeaf())
-        parentPage->print();
-    
     delete parentPage;
 
     if(nodePage->isLeaf()){
@@ -437,11 +434,14 @@ void node_reorganize(NodePage* nodePage){
 }
 
 void leaf_reorganize(LeafPage* node, LeafPage* sibling, int64_t nodeKey, int64_t siblingKey, bool leftMostNode){
-    std::cout << "reorg leaves " << node->getPagenum() << "(" << nodeKey << ")" << " & " << sibling->getPagenum() << "(" << siblingKey << ") ";
+    //node->print();
+    //sibling->print();
+    
+    //std::cout << "reorg leaves " << node->getPagenum() << "(" << nodeKey << ")" << " & " << sibling->getPagenum() << "(" << siblingKey << ") ";
 
     if(sibling->isMergeAvailable(node)){
         // absorb all values
-        std::cout << "absorb (all)" << std::endl;
+        //std::cout << "absorb (all)" << std::endl;
         sibling->absorbAll(node, !leftMostNode);
         sibling->save();
 
@@ -459,7 +459,7 @@ void leaf_reorganize(LeafPage* node, LeafPage* sibling, int64_t nodeKey, int64_t
 
     }else{
         // redistribute
-        std::cout << "redistribute (one)" << std::endl;
+        //std::cout << "redistribute (one)" << std::endl;
         node->redistribute(sibling, !leftMostNode);
 
         node->save();
@@ -476,12 +476,14 @@ void leaf_reorganize(LeafPage* node, LeafPage* sibling, int64_t nodeKey, int64_t
 }
 
 void internal_reorganize(InternalPage* node, InternalPage* sibling, int64_t nodeKey, int64_t siblingKey, bool leftMostNode){
-    std::cout << "reorg internals " << node->getPagenum() << "(" << nodeKey << ")" << " & " << sibling->getPagenum() << "(" << siblingKey << ") ";
     //node->print();
     //sibling->print();
+    
+    //std::cout << "reorg internals " << node->getPagenum() << "(" << nodeKey << ")" << " & " << sibling->getPagenum() << "(" << siblingKey << ") ";
+    
     if(sibling->isMergeAvailable(node)){
         // absorb all values
-        std::cout << "absorb (all)" << std::endl;
+        //std::cout << "absorb (all)" << std::endl;
 
         int64_t hiddenKey = leftMostNode ? siblingKey : nodeKey;
 
@@ -502,7 +504,7 @@ void internal_reorganize(InternalPage* node, InternalPage* sibling, int64_t node
 
     }else{
         // redistribute
-        std::cout << "redistribute (one)" << std::endl;
+        //std::cout << "redistribute (one)" << std::endl;
 
         // keep the original values
         int64_t hiddenKey = leftMostNode ? siblingKey : nodeKey;
