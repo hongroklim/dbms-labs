@@ -16,12 +16,18 @@ LockContainer::~LockContainer(){
     delete keyMap;
 }
 
-LockEntry* LockContainer::getOrInsert(int table_id, int64_t key){
-    pthread_mutex_lock(&mutex);
+std::size_t LockContainer::getHashKey(int table_id, int64_t key){
+    uint64_t merged = table_id + key;
+    std::size_t hashKey = std::hash<uint64_t>{}(merged);
+    return hashKey;
+}
 
+LockEntry* LockContainer::getOrInsert(int table_id, int64_t key){
     // Hashing given parameters
-    std::string inputString = std::string(table_id+"|"+key);
-    std::size_t hashKey = std::hash<std::string>{}(inputString);
+    std::size_t hashKey = getHashKey(table_id, key);
+    
+    // Lock the container
+    pthread_mutex_lock(&mutex);
 
     // Find key among exists
     auto item = keyMap->find(hashKey);
@@ -49,7 +55,9 @@ LockEntry* LockContainer::getOrInsert(int table_id, int64_t key){
         keyMap->insert({hashKey, entry});
     }
 
+    // Unlock the container
     pthread_mutex_unlock(&mutex);
+
     return entry;
 }
 

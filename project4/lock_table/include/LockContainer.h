@@ -8,6 +8,9 @@ class LockContainer {
 private:
     std::map<std::size_t, LockEntry*>* keyMap{};
     pthread_mutex_t mutex{};
+
+    std::size_t getHashKey(int table_id, int64_t key);
+
 public:
     LockContainer();
     ~LockContainer();
