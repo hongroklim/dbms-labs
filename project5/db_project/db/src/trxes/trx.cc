@@ -49,16 +49,16 @@ lock_t* lock_acquire(int64_t table_id, pagenum_t pagenum, int64_t key, int trx_i
         return nullptr;
     }
 
-    // Whether it has been already acquired in the same Transaction
-    lock_t* lock = trx_find_acquired_lock(trx_id, table_id, pagenum, key, lock_mode);
-    if(lock != nullptr)
-        return lock;
-
     // Get the corresponding entry
     LockEntry* entry = lc->getOrInsert(table_id, pagenum);
 
     // Lock the entry
     pthread_mutex_lock(entry->getMutex());
+
+    // Whether it has been already acquired in the same Transaction
+    lock_t* lock = trx_find_acquired_lock(trx_id, table_id, pagenum, key, lock_mode);
+    if(lock != nullptr)
+        return lock;
 
     // Create a new lock
     lock = new lock_t{key, lock_mode, entry->getTail(), nullptr, entry, false};
@@ -69,12 +69,14 @@ lock_t* lock_acquire(int64_t table_id, pagenum_t pagenum, int64_t key, int trx_i
     lock_t* prevLock = prevLocks.size() != 0 ? prevLocks.back() : nullptr;
 
     // Detect Dead lock
+    /*
     if(prevLock != nullptr && trx_dead_lock(trx_id, prevLock->trxId)){
         std::cout << "Deadlock detected" << std::endl;
 
         delete lock;
         return nullptr;
     }
+    */
 
     // Check the ancestor
     if(entry->getHead() == nullptr){
