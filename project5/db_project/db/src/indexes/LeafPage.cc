@@ -194,19 +194,15 @@ void LeafPage::update(int64_t key, char* values, uint16_t new_val_size, uint16_t
     // find the matched slot
     slot s = getSlot(getSlotIndex(key));
 
-    // TODO shift offset
-    /*
-    int16_t diffSize = new_val_size - s.val_size;
-    if(diffSize != 0){
-
-    }
-    */
-
     // set new value
     page_write_value(page, s.offset, values, new_val_size);
 
     // return old val size
     *old_val_size = s.val_size;
+
+    // set new val size
+    s.val_size = new_val_size;
+    setSlot(s);
 }
 
 void LeafPage::del(slot s){
