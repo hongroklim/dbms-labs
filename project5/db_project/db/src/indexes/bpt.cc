@@ -313,6 +313,7 @@ int db_update(int64_t table_id, int64_t key, char* values, uint16_t new_val_size
 
         // update
         leafPage->update(key, values, new_val_size, old_val_size);
+        leafPage->save();
 
     }catch(std::exception &e){
         std::cout << e.what() << std::endl;
