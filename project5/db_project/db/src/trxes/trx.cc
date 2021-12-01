@@ -232,7 +232,7 @@ int trx_append_lock(int trxId, lock_t* newLock){
         }
 
         // Append behind the last
-        tmpLock->trxNext = lock;
+        tmpLock->trxNext = newLock;
     }
 
     return 0;
@@ -281,7 +281,7 @@ int trx_commit(int trx_id){
         lock_release(lock);
         lock = tmpLock;
     }
-
+    
     // Remove the transaction
     tc->remove(trx_id);
 
