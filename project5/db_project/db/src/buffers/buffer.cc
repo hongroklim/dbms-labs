@@ -239,8 +239,10 @@ bool buffer_is_pinned(block_t* block){
 
 int buffer_pin(int64_t table_id, pagenum_t pagenum){
     block_t* block = buffer_find_block(table_id, pagenum);
-    pthread_mutex_lock(&block->mutex);
-    block->lockCnt++;
+    if(block != nullptr){
+        pthread_mutex_lock(&block->mutex);
+        block->lockCnt++;
+    }
     return 0;
 }
 

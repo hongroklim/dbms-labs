@@ -293,7 +293,7 @@ int db_find(int64_t table_id, int64_t key, char* ret_val, uint16_t* val_size, in
 
 int db_update(int64_t table_id, int64_t key, char* values, uint16_t new_val_size, uint16_t* old_val_size, int trx_id){
     LeafPage* leafPage;
-    // try{
+    try{
         // find candidate leaf node
         leafPage = node_find_candidate_leaf(table_id, key, true);
         if(leafPage == nullptr){
@@ -319,13 +319,13 @@ int db_update(int64_t table_id, int64_t key, char* values, uint16_t new_val_size
         leafPage->update(key, values, new_val_size);
         leafPage->save();
 
-    // }catch(std::exception &e){
-    //     std::cout << e.what() << std::endl;
-    //     trx_rollback(trx_id);
+    }catch(std::exception &e){
+        std::cout << e.what() << std::endl;
+        trx_rollback(trx_id);
 
-    //     delete leafPage;    // include unpin the buffer
-    //     return -2;
-    // }
+        delete leafPage;    // include unpin the buffer
+        return -2;
+    }
 
     delete leafPage;
     return 0;

@@ -13,7 +13,8 @@ set(DB_TESTS
   #api_test.cc
   #grammar_test.cc
   #trx_test.cc
-  lock_test.cc
+  #lock_test.cc
+  thread_test.cc
   )
 
 add_executable(db_test ${DB_TESTS})

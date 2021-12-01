@@ -28,6 +28,9 @@ struct lock_t {
     pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
     int waitCnt = 0;
 
+    // Lock Compression
+    bool* bitmap{};
+
     // TODO extract into logs
     bool isDirty = false;
     char* org_value{};

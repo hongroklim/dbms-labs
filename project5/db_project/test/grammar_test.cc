@@ -1,3 +1,6 @@
+/**
+ * Note : this code refers to TA's sample test script
+ */
 #include "gtest/gtest.h"
 
 #include "files/file.h"

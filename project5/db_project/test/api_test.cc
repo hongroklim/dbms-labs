@@ -29,7 +29,7 @@ static constexpr int NUM_TABLES { 1 };
 static constexpr int NUM_KEYS { 10000 };
 
 static constexpr int MIN_VAL_SIZE { 46 };
-static constexpr int MAX_VAL_SIZE { 198 };
+static constexpr int MAX_VAL_SIZE { 108 };
 
 static constexpr int BUFFER_SIZE { 10 };
 
