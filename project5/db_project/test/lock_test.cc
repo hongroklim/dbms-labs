@@ -155,26 +155,38 @@ func_exit:
 }
 
 TEST(ScenarioLockTest, xLock){
-	GTEST_SKIP();
-	
 	if (init_db(BUFFER_SIZE) != 0) {
 		std::cout << "Failed to initialize" << std::endl;
 	}
 
+		if (init_db(BUFFER_SIZE) != 0) {
+		std::cout << "Failed to initialize" << std::endl;
+		return;
+	}
+
+	int64_t table_id = open_table((char*)"table0");
+
+	db_insert(table_id, 1, const_cast<char*>(std::string(CHARACTERS, 50).c_str()),
+										std::string(CHARACTERS, 50).size());
+	db_insert(table_id, 2, const_cast<char*>(std::string(CHARACTERS, 10, 60).c_str()),
+										std::string(CHARACTERS, 10, 60).size());
+
 	int trx_01 = trx_begin();
 	int trx_02 = trx_begin();
 
-	lock_test_append(10, trx_01, LOCK_TYPE_EXCLUSIVE, true);
-	lock_test_append(10, trx_01, LOCK_TYPE_SHARED, true);
-	lock_test_append(10, trx_01, LOCK_TYPE_SHARED, false);
-	lock_test_append(10, trx_02, LOCK_TYPE_SHARED, false);
+	lock_test_append(1, trx_01, LOCK_TYPE_EXCLUSIVE, true);
+	lock_test_append(1, trx_01, LOCK_TYPE_SHARED, true);
+	lock_test_append(1, trx_01, LOCK_TYPE_SHARED, false);
+	lock_test_append(1, trx_02, LOCK_TYPE_SHARED, false);
 
-	EXPECT_EQ(lock_acquire(999, 999, 10, trx_02, LOCK_TYPE_EXCLUSIVE) != nullptr, true);
+	EXPECT_EQ(lock_acquire(1, 1, 1, trx_02, LOCK_TYPE_EXCLUSIVE) != nullptr, true);
 
 	lock_test_clear();
 }
 
 TEST(DeadlockTest, main){
+	GTEST_SKIP();
+
 	if (init_db(BUFFER_SIZE) != 0) {
 		std::cout << "Failed to initialize" << std::endl;
 		return;

@@ -117,7 +117,7 @@ lock_t* lock_acquire(int64_t table_id, pagenum_t pagenum, int64_t key, int trx_i
     }
 
     // Detect Dead lock
-    pthread_mutex_lock(trxContainer->getMutex());
+    //pthread_mutex_lock(trxContainer->getMutex());
     if(trx_dead_lock(trx_id, prevLocks)){
         std::cout << "Deadlock detected" << std::endl;
 
@@ -131,7 +131,7 @@ lock_t* lock_acquire(int64_t table_id, pagenum_t pagenum, int64_t key, int trx_i
 
     // Append into the transaction
     trx_append_lock(trxContainer, trx_id, lock);
-    pthread_mutex_unlock(trxContainer->getMutex());
+    //pthread_mutex_unlock(trxContainer->getMutex());
 
     // Check the ancestor
     if(entry->getHead() == nullptr){
