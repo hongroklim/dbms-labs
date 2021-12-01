@@ -156,13 +156,14 @@ std::vector<lock_t*> lock_find_prev_locks(LockEntry* entry, lock_t* newLock){
         
         // Break conditions
         if(lock->lockMode == LOCK_TYPE_EXCLUSIVE){
+            // If encountered lock is X (whatever acquired or not)
             locks.push_back(lock);
             break;
 
         }else if(newLock->lockMode == LOCK_TYPE_EXCLUSIVE
                 && lock->lockMode == LOCK_TYPE_SHARED && lock->isAcquired){
+            // If new lock is X and encounters acquired S
             locks.push_back(lock);
-            break;
         }
 
         // Continue
