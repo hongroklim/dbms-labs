@@ -47,7 +47,7 @@ std::vector<lock_t*> lock_find_prev_locks(LockEntry* entry, lock_t* newLock);
 lock_t* trx_find_acquired_lock(int trxId, int64_t table_id,
             pagenum_t pagenum, int64_t key, int lockMode);
 int trx_append_lock(int trxId, lock_t* newLock);
-bool trx_dead_lock(int newTrxId, int tgtTrxId);
+bool trx_dead_lock(int trxId, std::vector<lock_t*> prevLocks);
 
 // Methods
 int init_lock_table() {
@@ -79,17 +79,14 @@ lock_t* lock_acquire(int64_t table_id, pagenum_t pagenum, int64_t key, int trx_i
 
     // whether pass or wait?
     std::vector<lock_t*> prevLocks = lock_find_prev_locks(entry, lock);
-    lock_t* prevLock = prevLocks.size() != 0 ? prevLocks.back() : nullptr;
-
+    
     // Detect Dead lock
-    /*
-    if(prevLock != nullptr && trx_dead_lock(trx_id, prevLock->trxId)){
+    if(trx_dead_lock(trx_id, prevLocks)){
         std::cout << "Deadlock detected" << std::endl;
 
         delete lock;
         return nullptr;
     }
-    */
 
     // Check the ancestor
     if(entry->getHead() == nullptr){
@@ -108,10 +105,13 @@ lock_t* lock_acquire(int64_t table_id, pagenum_t pagenum, int64_t key, int trx_i
     pthread_mutex_unlock(entry->getMutex());
 
     // Early return when no waiting
-    if(prevLock == nullptr){
+    if(prevLocks.size() == 0){
         lock->isAcquired = true;
         return lock;
     }
+
+    // Otherwise, pick the tail of locks
+    lock_t* prevLock = prevLocks.front();
 
     // Suspend the previous lock
     pthread_mutex_lock(&prevLock->mutex);
@@ -160,8 +160,7 @@ std::vector<lock_t*> lock_find_prev_locks(LockEntry* entry, lock_t* newLock){
             break;
 
         }else if(newLock->lockMode == LOCK_TYPE_EXCLUSIVE
-                && lock->lockMode == LOCK_TYPE_SHARED
-                && lock->isAcquired){
+                && lock->lockMode == LOCK_TYPE_SHARED && lock->isAcquired){
             locks.push_back(lock);
             break;
         }
@@ -170,8 +169,7 @@ std::vector<lock_t*> lock_find_prev_locks(LockEntry* entry, lock_t* newLock){
         lock = lock->prev;
     }
 
-    // tail to the last
-    reverse(locks.begin(), locks.end());
+    // the backward chain is the first
     return locks;
 }
 
@@ -270,31 +268,29 @@ int trx_append_lock(int trxId, lock_t* newLock){
     return 0;
 }
 
-bool trx_dead_lock(int newTrxId, int tgtTrxId){
-    // Traverse all locks in the transaction
-    lock_t* lock = tc->getHead(tgtTrxId);
-    std::vector<lock_t*> prevLocks;
-    
-    while(lock != nullptr){
-        // Skip the acquiring locks
-        if(lock->isAcquired)
-            continue;
-        
-        // Find the waiting locks
-        prevLocks = lock_find_prev_locks(lock->sentinel, lock);
+bool trx_dead_lock(int trxId, std::vector<lock_t*> prevLocks){
+    if(prevLocks.size() > 0){
+        // Check previous locks' transactions
+        lock_t* prevTrxLock;
+        std::vector<lock_t*> prevTrxLocks;
         for(auto prevLock : prevLocks){
-            if(prevLock->trxId == newTrxId
-                    || trx_dead_lock(newTrxId, prevLock->trxId)){
-                // Waiting recursively, return true
-                // Otherwise, keep traverse
-                return true;
+            // Why the prevLock's transaction isn't terminated?
+            prevTrxLock = tc->getHead(prevLock->trxId);
+            while(prevTrxLock != nullptr){
+                if(prevTrxLock->trxId == trxId){
+                    return true;
+                }
+                
+                prevTrxLocks = lock_find_prev_locks(prevTrxLock->sentinel, prevTrxLock);
+                if(!prevTrxLock->isAcquired && trx_dead_lock(trxId, prevTrxLocks)){
+                    return true;
+                }else{
+                    // Continue
+                    prevTrxLock = prevTrxLock->trxNext;
+                }
             }
         }
-
-        // Move the next
-        lock = lock->trxNext;
     }
-
     return false;
 }
 
@@ -306,7 +302,7 @@ int trx_rollback(int trx_id){
     while(lock != nullptr){
         tmpLock = lock->trxNext;
         
-        // If it is X lock
+        // If the lock is X and dirty
         if(lock->lockMode == LOCK_TYPE_EXCLUSIVE && lock->isDirty){
             uint16_t temp_val_size = 0;
             db_undo(lock->sentinel->getTableId(), lock->sentinel->getPagenum(),
