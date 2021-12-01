@@ -92,22 +92,27 @@ lock_t* lock_acquire(int64_t table_id, pagenum_t pagenum, int64_t key, int trx_i
     // whether pass or wait?
     std::vector<lock_t*> prevLocks = lock_find_prev_locks(entry, lock);
     
-    // Trial of Implicit locking
-    if(prevLocks.size() == 0 && lock_mode == LOCK_TYPE_EXCLUSIVE){
+    // When there is no explicit lock
+    if(prevLocks.size() == 0){
         // Pin the page first
         buffer_pin(table_id, pagenum);
 
-        // set implicit lock
+        // Lookup and Trial of implicit lock
         lock_t* prevLock = lock_implicit(lock);
-        if(prevLock == nullptr){
-            // There is no valid precedent
-            pthread_mutex_unlock(entry->getMutex());
-            return lock;
 
-        }else{
+        if(prevLock != nullptr){
             // Unpin then keep locking
             buffer_unpin(table_id, pagenum);
             prevLocks.push_back(prevLock);
+
+        }else if(lock->lockMode == LOCK_TYPE_EXCLUSIVE){
+            // Success to become an implicit one
+            pthread_mutex_unlock(entry->getMutex());
+            return lock;
+
+        }else if(lock->lockMode == LOCK_TYPE_SHARED){
+            // Confirm that there is no predecent
+            buffer_unpin(table_id, pagenum);
         }
     }
 
@@ -223,39 +228,44 @@ std::vector<lock_t*> lock_find_prev_locks(LockEntry* entry, lock_t* newLock){
 }
 
 lock_t* lock_implicit(lock_t* lock_obj){
-    // Assume that there is no precedent, and it is X itself.
+    // Assume that there is no explicit precedent
     int prevTrxId = db_read_trx(lock_obj->sentinel->getTableId(),
                     lock_obj->sentinel->getPagenum(), lock_obj->key);
     
     pthread_mutex_lock(trxContainer->getMutex());
     
     // Whether the previous lock is alive
-    lock_t* prevLock{};
-    if(prevTrxId <= 0 || !trxContainer->isExist(prevTrxId)){
-        // Set the trx id into the page
-        db_write_trx(lock_obj->sentinel->getTableId(),
-            lock_obj->sentinel->getPagenum(), lock_obj->key, lock_obj->trxId);
+    bool isValidPrev = prevTrxId > 0 && trxContainer->isExist(prevTrxId);
 
-        // Append into implicit container
-        pthread_mutex_lock(implicitContainer->getMutex());
-        trx_append_lock(implicitContainer, lock_obj->trxId, lock_obj);
-        pthread_mutex_unlock(implicitContainer->getMutex());
-
-        lock_obj->isAcquired = true;
-
-    }else{
+    if(isValidPrev){
         // Otherwise extract into explicit lock
-        prevLock = lock_to_explicit(prevTrxId, lock_obj);
+        lock_t* prevLock = lock_to_explicit(prevTrxId, lock_obj);
 
         // Then link to the transaction
         trx_append_lock(trxContainer, prevTrxId, prevLock);
         pthread_mutex_unlock(trxContainer->getMutex());
         return prevLock;
+        
+    }else if(lock_obj->lockMode == LOCK_TYPE_SHARED){
+        // there is no implicit lock
+        pthread_mutex_unlock(trxContainer->getMutex());
+
+    }else if(lock_obj->lockMode == LOCK_TYPE_EXCLUSIVE){
+        // the new lock will be the implicit one
+        db_write_trx(lock_obj->sentinel->getTableId(),
+            lock_obj->sentinel->getPagenum(), lock_obj->key, lock_obj->trxId);
+        
+        lock_obj->isAcquired = true;
+        pthread_mutex_unlock(trxContainer->getMutex());
+
+        // Append into implicit container
+        pthread_mutex_lock(implicitContainer->getMutex());
+        trx_append_lock(implicitContainer, lock_obj->trxId, lock_obj);
+        pthread_mutex_unlock(implicitContainer->getMutex());
     }
 
-    pthread_mutex_unlock(trxContainer->getMutex());
-
-    return prevLock;
+    // It means that there is no implicit lock
+    return nullptr;
 }
 
 lock_t* lock_to_explicit(int trx_id, lock_t* new_lock){
@@ -491,8 +501,8 @@ int trx_commit(int trx_id){
 }
 
 struct lock_test_info_t {
-    int64_t table_id = 999;
-    pagenum_t pagenum = 999;
+    int64_t table_id = 1;
+    pagenum_t pagenum = 1;
     std::vector<int> trx;
 };
 
