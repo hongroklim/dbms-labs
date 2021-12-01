@@ -15,6 +15,14 @@ LockEntry::~LockEntry(){
     // TODO destructor of LockEntry
 }
 
+int LockEntry::getTableId(){
+    return this->table_id;
+}
+
+uint64_t LockEntry::getPagenum(){
+    return this->pagenum;
+}
+
 bool LockEntry::equals(int table_id, uint64_t pagenum){
     return this->table_id == table_id && this->pagenum == pagenum;
 }

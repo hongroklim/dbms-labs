@@ -19,6 +19,9 @@ public:
     LockEntry(int table_id, uint64_t pagenum);
     ~LockEntry();
 
+    int getTableId();
+    uint64_t getPagenum();
+
     bool equals(int table_id, uint64_t pagenum);
 
     void setNext(LockEntry* next);

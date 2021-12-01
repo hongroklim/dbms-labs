@@ -311,8 +311,16 @@ int db_update(int64_t table_id, int64_t key, char* values, uint16_t new_val_size
             throw std::runtime_error("Failed to acquire the lock");
         buffer_pin(leafPage->getTableId(), leafPage->getPagenum());
 
+        // keep the original value
+        char org_value[112];
+        uint16_t org_val_size = 0;
+        
+        leafPage->readValue(key, org_value, &org_val_size);
+        lock_record(lock, org_value, org_val_size);
+        *old_val_size = org_val_size;
+
         // update
-        leafPage->update(key, values, new_val_size, old_val_size);
+        leafPage->update(key, values, new_val_size);
         leafPage->save();
 
     }catch(std::exception &e){
@@ -321,6 +329,24 @@ int db_update(int64_t table_id, int64_t key, char* values, uint16_t new_val_size
 
         delete leafPage;    // include unpin the buffer
         return -2;
+    }
+
+    delete leafPage;
+    return 0;
+}
+
+int db_undo(int64_t table_id, pagenum_t pagenum, int64_t key,
+        char* org_value, uint16_t org_val_size){
+    LeafPage* leafPage = new LeafPage(table_id, pagenum);
+
+    try{
+        uint16_t tmp_val_size = 0;
+        leafPage->update(key, org_value, org_val_size);
+        leafPage->save();
+
+    }catch(std::exception &e){
+        std::cout << e.what() << std::endl;
+        return -1;
     }
 
     delete leafPage;

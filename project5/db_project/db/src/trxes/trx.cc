@@ -3,8 +3,11 @@
 #include <iostream>
 #include <vector>
 #include <algorithm>
+#include <cstring>
 #include "trxes/LockContainer.h"
 #include "trxes/TrxContainer.h"
+
+#include "indexes/bpt.h"
 
 struct lock_t {
     int64_t key{};
@@ -23,6 +26,16 @@ struct lock_t {
     pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
     pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
     int waitCnt = 0;
+
+    // TODO extract into logs
+    bool isDirty = false;
+    char* org_value{};
+    int org_val_size = 0;
+
+    ~lock_t(){
+        if(isDirty && org_val_size > 0)
+            delete[] org_value;
+    }
 };
 
 // Attributes
@@ -162,6 +175,17 @@ std::vector<lock_t*> lock_find_prev_locks(LockEntry* entry, lock_t* newLock){
     return locks;
 }
 
+
+int lock_record(lock_t* lock_obj, char* org_value, uint16_t org_val_size){
+    lock_obj->org_value = new char[org_val_size];
+    memcpy(lock_obj->org_value, org_value, org_val_size);
+
+    lock_obj->org_val_size = org_val_size;
+    lock_obj->isDirty = true;
+
+    return 0;
+}
+
 int lock_release(lock_t* lock_obj) {
     LockEntry* entry = lock_obj->sentinel;
     
@@ -275,8 +299,28 @@ bool trx_dead_lock(int newTrxId, int tgtTrxId){
 }
 
 int trx_rollback(int trx_id){
-    // TODO utilize undo log
-    return 0;
+    lock_t *lock = tc->getHead(trx_id);
+
+    // Release all locks
+    lock_t* tmpLock{};
+    while(lock != nullptr){
+        tmpLock = lock->trxNext;
+        
+        // If it is X lock
+        if(lock->lockMode == LOCK_TYPE_EXCLUSIVE && lock->isDirty){
+            uint16_t temp_val_size = 0;
+            db_undo(lock->sentinel->getTableId(), lock->sentinel->getPagenum(),
+            lock->key, lock->org_value, lock->org_val_size);
+        }
+
+        lock_release(lock);
+        lock = tmpLock;
+    }
+    
+    // Remove the transaction
+    tc->remove(trx_id);
+
+    return trx_id;
 }
 
 int trx_commit(int trx_id){

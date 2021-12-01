@@ -37,9 +37,12 @@ int db_delete(int64_t table_id, int64_t key);
  * If found matching‘key’, update the value of the record to ‘values’
  * string with its ‘new_val_size’ and store its size in ‘old_val_size’.
  * If success, return 0. Otherwise, return non-zero value.
- * // TODO trx_id in db_find
  */
-int db_update(int64_t table_id, int64_t key, char* values, uint16_t new_val_size, uint16_t* old_val_size, int trx_id);
+int db_update(int64_t table_id, int64_t key, char* values,
+        uint16_t new_val_size, uint16_t* old_val_size, int trx_id);
+
+int db_undo(int64_t table_id, uint64_t pagenum,
+        int64_t key, char* org_value, uint16_t org_val_size);
 
 /*
  * Initialize your database management system.

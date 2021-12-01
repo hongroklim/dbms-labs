@@ -120,7 +120,8 @@ TEST(LockTest, main){
             goto func_exit;
         }
 
-		trx_commit(trx_id);
+		//trx_commit(trx_id);
+		trx_rollback(trx_id);
 		std::cout << "[UPDATE END]\n";
 
 		std::cout << "[UPDATE START]\n";
@@ -133,7 +134,7 @@ TEST(LockTest, main){
                 kv.second.substr(15).size(), &old_val_size, trx_id) != 0) {
             std::cout << "failed to update " << kv.first << std::endl;
             goto func_exit;
-        } else if (old_val_size != kv.second.substr(12).size()) {
+        } else if (old_val_size != kv.second.size()) {
             std::cout << "failed to update " << kv.first << " (size)" << std::endl;
             goto func_exit;
         }
