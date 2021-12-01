@@ -161,11 +161,11 @@ TEST(ApiTest, main){
 			}
 		}
 
-		trx_commit(trxId);
+		//trx_commit(trxId);
 		std::cout << "[UPDATE END]\n";
 
 		std::cout << "[FIND START]\n";
-		trxId = trx_begin();
+		//trxId = trx_begin();
 
 		for (const auto& kv: key_value_pairs) {
 			ret_size = 0;

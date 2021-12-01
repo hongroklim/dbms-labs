@@ -8,7 +8,7 @@ struct slot {
     int64_t key;
     uint16_t val_size;
     uint16_t offset;
-    int trx_id;
+    int trx_id = 0;
 };
 
 class LeafPage : public NodePage {
@@ -65,6 +65,9 @@ public:
     bool isMergeAvailable(LeafPage* toBeMerged);
     void absorbAll(LeafPage* victim, bool isAppend);
     void redistribute(LeafPage* srcLeaf, bool fromLeft);
+
+    int getTrxId(int64_t key);
+    void setTrxId(int64_t key, int trxId);
 
     void print() override;
 };

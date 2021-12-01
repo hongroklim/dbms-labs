@@ -81,7 +81,7 @@ void LeafPage::setSlot(uint index, int64_t key, uint16_t val_size, uint16_t offs
     page_write_value(page, 128 + (index * 16) + 0, &key, sizeof(int64_t));
     page_write_value(page, 128 + (index * 16) + 8, &val_size, sizeof(uint16_t));
     page_write_value(page, 128 + (index * 16) + 10, &offset, sizeof(uint16_t));
-    page_write_value(page, 128 + (index * 16) + 12, &offset, sizeof(uint16_t));
+    page_write_value(page, 128 + (index * 16) + 12, &trx_id, sizeof(int));
 }
 
 void LeafPage::setSlot(slot s){
@@ -342,6 +342,17 @@ void LeafPage::redistribute(LeafPage* srcLeaf, bool fromLeft){
     }
 
     delete []value;
+}
+
+int LeafPage::getTrxId(int64_t key){
+    slot s = getSlot(getSlotIndex(key));
+    return s.trx_id;
+}
+
+void LeafPage::setTrxId(int64_t key, int trxId){
+    slot s = getSlot(getSlotIndex(key));
+    s.trx_id = trxId;
+    setSlot(s);
 }
 
 void LeafPage::print() {

@@ -15,9 +15,25 @@ int init_lock_table();
 
 lock_t* lock_acquire(int64_t table_id, pagenum_t pagenum, int64_t key, int trx_id, int lock_mode);
 
-void lock_test_append(int64_t key, int trx_id, int lock_mode, bool isAcquired);
+/* 
+ * Return the previous implicit lock
+ * (which is linked into explicit locks in this fuction)
+ * Otherwise, return nullptr. That is, there is no precedent
+ */
+lock_t* lock_implicit(lock_t* lock_obj);
 
-void lock_test_clear();
+
+/**
+ * @brief Find the valid implicit lock and return it
+ * 
+ * it will pop from the implicit list then be put
+ * in the series of explicit lock.
+ * 
+ * @param trx_id 
+ * @param lock_obj 
+ * @return lock_t* 
+ */
+lock_t* lock_to_explicit(int trx_id, lock_t* lock_obj);
 
 int lock_record(lock_t* lock_obj, char* org_value, uint16_t org_val_size);
 
@@ -39,5 +55,9 @@ int trx_rollback(int trx_id);
  * Return the completed transaction id if success, otherwise return 0.
  */
 int trx_commit(int trx_id);
+
+/* lock table test */
+void lock_test_append(int64_t key, int trx_id, int lock_mode, bool isAcquired);
+void lock_test_clear();
 
 #endif //DB_TRX_H

@@ -1,5 +1,7 @@
 #include "trxes/TrxContainer.h"
 
+#include <iostream>
+
 TrxContainer::TrxContainer(){
     keyMap = new std::map<int, lock_t*>();
     mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -9,19 +11,22 @@ TrxContainer::~TrxContainer(){
     delete keyMap;
 }
 
-int TrxContainer::put(){
+int TrxContainer::put(int trxId){
     pthread_mutex_lock(&mutex);
 
-    // increase the current Transaction ID
-    keyMap->insert({++trxIdSeq, nullptr});
-
+    if(trxId <= 0){
+        // increase the current Transaction ID
+        keyMap->insert({++trxIdSeq, nullptr});
+    }else{
+        // set the designated id
+        keyMap->insert({trxId, nullptr});
+    }
+    
     pthread_mutex_unlock(&mutex);
     return trxIdSeq;
 }
 
 int TrxContainer::setHead(int trxId, lock_t* lock){
-    pthread_mutex_lock(&mutex);
-
     int result = 0;
     auto entry = keyMap->find(trxId);
 
@@ -31,32 +36,29 @@ int TrxContainer::setHead(int trxId, lock_t* lock){
         result = -1;
     }
 
-    pthread_mutex_unlock(&mutex);
     return result;
 }
 
 lock_t* TrxContainer::getHead(int trxId){
-    pthread_mutex_lock(&mutex);
-
     lock_t* result{};
     auto entry = keyMap->find(trxId);
 
     if(entry != keyMap->end()){
         result = entry->second;
     }else{
-        throw std::runtime_error(trxId+" is not found in the transactions");
+        std::cout << trxId << " is not found in the transactions" << std::endl;
+        throw std::runtime_error("Failed to find transaction id");
     }
-
-    pthread_mutex_unlock(&mutex);
     return result;
 }
 
+bool TrxContainer::isExist(int trxId){
+    auto entry = keyMap->find(trxId);
+    return entry != keyMap->end();
+}
+
 void TrxContainer::remove(int trxId){
-    pthread_mutex_lock(&mutex);
-
     keyMap->erase(trxId);
-
-    pthread_mutex_unlock(&mutex);
 }
 
 pthread_mutex_t* TrxContainer::getMutex(){

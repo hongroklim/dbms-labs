@@ -293,7 +293,7 @@ int db_find(int64_t table_id, int64_t key, char* ret_val, uint16_t* val_size, in
 
 int db_update(int64_t table_id, int64_t key, char* values, uint16_t new_val_size, uint16_t* old_val_size, int trx_id){
     LeafPage* leafPage;
-    try{
+    // try{
         // find candidate leaf node
         leafPage = node_find_candidate_leaf(table_id, key, true);
         if(leafPage == nullptr){
@@ -302,7 +302,8 @@ int db_update(int64_t table_id, int64_t key, char* values, uint16_t new_val_size
         }
 
         // lock the record while the buffer is unlocked
-        lock_t* lock = lock_acquire(leafPage->getTableId(), leafPage->getPagenum(), key, trx_id, LOCK_TYPE_EXCLUSIVE);
+        lock_t* lock = lock_acquire(table_id, leafPage->getPagenum(),
+                            key, trx_id, LOCK_TYPE_EXCLUSIVE);
         if(lock == nullptr)
             throw std::runtime_error("Failed to acquire a lock");
 
@@ -318,16 +319,47 @@ int db_update(int64_t table_id, int64_t key, char* values, uint16_t new_val_size
         leafPage->update(key, values, new_val_size);
         leafPage->save();
 
-    }catch(std::exception &e){
-        std::cout << e.what() << std::endl;
-        trx_rollback(trx_id);
+    // }catch(std::exception &e){
+    //     std::cout << e.what() << std::endl;
+    //     trx_rollback(trx_id);
 
-        delete leafPage;    // include unpin the buffer
-        return -2;
-    }
+    //     delete leafPage;    // include unpin the buffer
+    //     return -2;
+    // }
 
     delete leafPage;
     return 0;
+}
+
+int db_read_trx(int64_t table_id, uint64_t pagenum, int64_t key){
+    LeafPage* leafPage = new LeafPage(table_id, pagenum);
+
+    int trx_id = 0;
+    try{
+        trx_id = leafPage->getTrxId(key);
+
+    }catch(std::exception &e){
+        std::cout << e.what() << std::endl;
+        return -1;
+    }
+
+    delete leafPage;
+    return trx_id;
+}
+
+void db_write_trx(int64_t table_id, uint64_t pagenum, int64_t key, int trx_id){
+    LeafPage* leafPage = new LeafPage(table_id, pagenum);
+
+    try{
+        leafPage->setTrxId(key, trx_id);
+        leafPage->save();
+
+    }catch(std::exception &e){
+        std::cout << e.what() << std::endl;
+        return;
+    }
+
+    delete leafPage;
 }
 
 int db_undo(int64_t table_id, pagenum_t pagenum, int64_t key,
