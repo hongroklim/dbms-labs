@@ -107,8 +107,8 @@ void table_init(int64_t table_id){
  */
 int db_insert(int64_t table_id, int64_t key, char* value, uint16_t val_size){
     // validate size of value
-    if(val_size < 50 || val_size > 112){
-        std::cout << "value size must be between 50 and 112, but " << val_size << std::endl;
+    if(val_size < 46 || val_size > 108){
+        std::cout << "value size must be between 46 and 108, but " << val_size << std::endl;
         return -1;
     }
 
@@ -272,12 +272,9 @@ int db_find(int64_t table_id, int64_t key, char* ret_val, uint16_t* val_size, in
         // get corresponding leaf
         leafPage = new LeafPage(table_id, pagenum);
 
-        // lock the record while the buffer is unlocked
-        buffer_unpin(table_id, pagenum);
         lock_t* lock = lock_acquire(table_id, pagenum, key, trx_id, LOCK_TYPE_SHARED);
         if(lock == nullptr)
-            trx_rollback(trx_id);
-        buffer_pin(table_id, pagenum);
+            throw std::runtime_error("Failed to acquire a lock");
 
         // read value
         leafPage->readValue(key, ret_val, val_size);
@@ -305,14 +302,12 @@ int db_update(int64_t table_id, int64_t key, char* values, uint16_t new_val_size
         }
 
         // lock the record while the buffer is unlocked
-        buffer_unpin(leafPage->getTableId(), leafPage->getPagenum());
         lock_t* lock = lock_acquire(leafPage->getTableId(), leafPage->getPagenum(), key, trx_id, LOCK_TYPE_EXCLUSIVE);
         if(lock == nullptr)
-            throw std::runtime_error("Failed to acquire the lock");
-        buffer_pin(leafPage->getTableId(), leafPage->getPagenum());
+            throw std::runtime_error("Failed to acquire a lock");
 
         // keep the original value
-        char org_value[112];
+        char org_value[108];
         uint16_t org_val_size = 0;
         
         leafPage->readValue(key, org_value, &org_val_size);

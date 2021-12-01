@@ -48,7 +48,7 @@ void LeafPage::setRightPagenum(pagenum_t p_pagenum){
 
 int64_t LeafPage::getKey(uint index){
     int64_t key;
-    page_read_value(page, 128 + (index*12), &key, sizeof(int64_t));
+    page_read_value(page, 128 + (index*16), &key, sizeof(int64_t));
     return key;
 }
 
@@ -58,7 +58,7 @@ int64_t LeafPage::getKey(uint index){
 bool LeafPage::isInsertAvailable(uint key_num, uint16_t total_val_size){
     uint totalKeyNum = getNumberOfKeys();
     uint16_t freeSpace = getAmountOfFreeSpace();
-    return key_num + totalKeyNum <= 64 && (key_num * 12) + total_val_size <= freeSpace;
+    return key_num + totalKeyNum <= 64 && (key_num * 16) + total_val_size <= freeSpace;
 }
 
 bool LeafPage::isInsertAvailable(uint16_t val_size){
@@ -70,21 +70,22 @@ slot LeafPage::getSlot(uint index){
     s.index = index;
 
     s.key = getKey(index);
-    page_read_value(page, 128 + (index * 12) + 8, &s.val_size, sizeof(uint16_t));
-    page_read_value(page, 128 + (index * 12) + 10, &s.offset, sizeof(uint16_t));
+    page_read_value(page, 128 + (index * 16) + 8, &s.val_size, sizeof(uint16_t));
+    page_read_value(page, 128 + (index * 16) + 10, &s.offset, sizeof(uint16_t));
+    page_read_value(page, 128 + (index * 16) + 12, &s.trx_id, sizeof(int));
 
     return s;
 }
 
-void LeafPage::setSlot(uint index, int64_t key, uint16_t val_size, uint16_t offset){
-    //std::cout << pagenum << " " << index << " " << key << " " << val_size << " " << offset << std::endl;
-    page_write_value(page, 128 + (index * 12) + 0, &key, sizeof(int64_t));
-    page_write_value(page, 128 + (index * 12) + 8, &val_size, sizeof(uint16_t));
-    page_write_value(page, 128 + (index * 12) + 10, &offset, sizeof(uint16_t));
+void LeafPage::setSlot(uint index, int64_t key, uint16_t val_size, uint16_t offset, int trx_id){
+    page_write_value(page, 128 + (index * 16) + 0, &key, sizeof(int64_t));
+    page_write_value(page, 128 + (index * 16) + 8, &val_size, sizeof(uint16_t));
+    page_write_value(page, 128 + (index * 16) + 10, &offset, sizeof(uint16_t));
+    page_write_value(page, 128 + (index * 16) + 12, &offset, sizeof(uint16_t));
 }
 
 void LeafPage::setSlot(slot s){
-    setSlot(s.index, s.key, s.val_size, s.offset);
+    setSlot(s.index, s.key, s.val_size, s.offset, s.trx_id);
 }
 
 int LeafPage::getSlotIndex(int64_t key){
@@ -125,7 +126,7 @@ uint LeafPage::findSplitIndex(uint insertionIndex, uint16_t val_size){
         }
 
         // get value size then append
-        page_read_value(page, 128 + (i * 12) + 8, &valSize, sizeof(uint16_t));
+        page_read_value(page, 128 + (i * 16) + 8, &valSize, sizeof(uint16_t));
         leftSize += valSize;
 
         i++;        // increase one of loop
@@ -144,21 +145,21 @@ void LeafPage::insert(int64_t key, char* value, uint16_t val_size){
 
     // shift slots to right
     for(uint i = keyNum; i > insertionIndex; i--){
-        page_move_value(page, 128+(i*12), 128+((i-1)*12), 12);
+        page_move_value(page, 128+(i*16), 128+((i-1)*16), 16);
     }
 
     // calculate insertion offset then set slot
     uint16_t freeAmount = getAmountOfFreeSpace();
-    uint16_t insertionOffset = 128 + (12 * keyNum) + freeAmount - val_size;
+    uint16_t insertionOffset = 128 + (16 * keyNum) + freeAmount - val_size;
 
-    setSlot(insertionIndex, key, val_size, insertionOffset);
+    setSlot(insertionIndex, key, val_size, insertionOffset, 0);
 
     // set value
     page_write_value(page, insertionOffset, value, val_size);
 
     // modify header
     setNumberOfKeys(keyNum + 1);
-    setAmountOfFreeSpace(freeAmount - val_size - 12);
+    setAmountOfFreeSpace(freeAmount - val_size - 16);
 }
 
 /**
@@ -169,7 +170,7 @@ void LeafPage::split(uint splitIndex, LeafPage* newLeaf){
     uint keyNum = getNumberOfKeys();
 
     slot s{};
-    char value[112];
+    char value[108];
 
     for(uint i=splitIndex; i<keyNum; i++){
         // read slot and value
@@ -211,12 +212,12 @@ void LeafPage::del(slot s){
     packValue(s);
 
     // remove slot
-    page_write_value(page, 128 + (s.index * 12), nullptr, 12);
+    page_write_value(page, 128 + (s.index * 16), nullptr, 16);
     packSlot(s.index);
 
     // modify header
     setNumberOfKeys(keyNum - 1);
-    setAmountOfFreeSpace(freeAmount + s.val_size + 12);
+    setAmountOfFreeSpace(freeAmount + s.val_size + 16);
 }
 
 void LeafPage::del(int64_t key){
@@ -234,8 +235,6 @@ void LeafPage::del(int64_t key){
 
 void LeafPage::del(uint begin, uint end){
     // TODO bulk delete
-
-
     // setNumberOfKeys(getNumberOfKeys() - end + begin - 1);
 }
 
@@ -244,7 +243,7 @@ void LeafPage::packSlot(uint removedIndex){
 
     // shift slots to left
     for(uint i=removedIndex+1; i<keyNum; i++){
-        page_move_value(page, 128+((i-1)*12), 128+(i*12), 12);
+        page_move_value(page, 128+((i-1)*16), 128+(i*16), 16);
     }
 }
 
@@ -303,7 +302,7 @@ void LeafPage::absorbAll(LeafPage* victim, bool isAppend){
     uint keyNum = victim->getNumberOfKeys();
 
     slot s{};
-    char* value = new char[112];
+    char* value = new char[108];
 
     for(uint i=0; i<keyNum; i++){
         // read slot and value from victim
@@ -325,7 +324,7 @@ void LeafPage::redistribute(LeafPage* srcLeaf, bool fromLeft){
     uint popIndex = fromLeft ? srcLeaf->getNumberOfKeys() - 1 : 0;
 
     slot s{};
-    char* value = new char[112];
+    char* value = new char[108];
 
     while(freeSpace >= FREE_SPACE_THRESHOLD){
         // read from the source
@@ -339,7 +338,7 @@ void LeafPage::redistribute(LeafPage* srcLeaf, bool fromLeft){
         insert(s.key, value, s.val_size);
 
         // increase free space
-        freeSpace -= 12 + s.val_size;
+        freeSpace -= 16 + s.val_size;
     }
 
     delete []value;

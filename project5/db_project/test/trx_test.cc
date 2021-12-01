@@ -22,10 +22,10 @@ static const std::string CHARACTERS {
 static const std::string BASE_TABLE_NAME { "table" };
 static constexpr int NUM_TABLES { 1 };
 
-static constexpr int NUM_KEYS { 100 };
+static constexpr int NUM_KEYS { 10000 };
 
-static constexpr int MIN_VAL_SIZE { 80 };
-static constexpr int MAX_VAL_SIZE { 112 };
+static constexpr int MIN_VAL_SIZE { 85 };
+static constexpr int MAX_VAL_SIZE { 108 };
 
 static constexpr int BUFFER_SIZE { 20 };
 

@@ -12,8 +12,8 @@ set(DB_TESTS
   # foo/bar/your_test.cc
   #api_test.cc
   #grammar_test.cc
-  #trx_test.cc
-  lock_test.cc
+  trx_test.cc
+  #lock_test.cc
   )
 
 add_executable(db_test ${DB_TESTS})

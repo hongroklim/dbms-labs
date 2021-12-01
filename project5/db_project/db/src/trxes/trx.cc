@@ -4,6 +4,7 @@
 #include <vector>
 #include <algorithm>
 #include <cstring>
+#include "buffers/buffer.h"
 #include "trxes/LockContainer.h"
 #include "trxes/TrxContainer.h"
 
@@ -62,6 +63,9 @@ lock_t* lock_acquire(int64_t table_id, pagenum_t pagenum, int64_t key, int trx_i
         return nullptr;
     }
 
+    // Unpin first
+    buffer_unpin(table_id, pagenum);
+
     // Get the corresponding entry
     LockEntry* entry = lc->getOrInsert(table_id, pagenum);
 
@@ -72,6 +76,8 @@ lock_t* lock_acquire(int64_t table_id, pagenum_t pagenum, int64_t key, int trx_i
     lock_t* lock = trx_find_acquired_lock(trx_id, table_id, pagenum, key, lock_mode);
     if(lock != nullptr){
         pthread_mutex_unlock(entry->getMutex());
+        buffer_pin(table_id, pagenum);
+
         return lock;
     }
         
@@ -86,6 +92,7 @@ lock_t* lock_acquire(int64_t table_id, pagenum_t pagenum, int64_t key, int trx_i
     if(trx_dead_lock(trx_id, prevLocks)){
         std::cout << "Deadlock detected" << std::endl;
         pthread_mutex_unlock(entry->getMutex());
+        buffer_pin(table_id, pagenum);
 
         delete lock;
         return nullptr;
@@ -110,6 +117,8 @@ lock_t* lock_acquire(int64_t table_id, pagenum_t pagenum, int64_t key, int trx_i
     // Early return when no waiting
     if(prevLocks.size() == 0){
         lock->isAcquired = true;
+        buffer_pin(table_id, pagenum);
+
         return lock;
     }
 
@@ -138,6 +147,7 @@ lock_t* lock_acquire(int64_t table_id, pagenum_t pagenum, int64_t key, int trx_i
         }
     }
 
+    buffer_pin(table_id, pagenum);
     return lock;
 }
 
@@ -185,19 +195,18 @@ std::vector<lock_t*> lock_find_prev_locks(LockEntry* entry, lock_t* newLock){
 struct lock_test_info_t {
     int64_t table_id = 999;
     pagenum_t pagenum = 999;
-    int64_t key = 999;
     std::vector<int> trx;
 };
 
 lock_test_info_t lockTest;
 
-void lock_test_append(int trx_id, int lock_mode, bool isAcquired){
+void lock_test_append(int64_t key, int trx_id, int lock_mode, bool isAcquired){
     if(std::find(lockTest.trx.begin(), lockTest.trx.end(), trx_id) == lockTest.trx.end()){
         lockTest.trx.push_back(trx_id);
     }
 
     LockEntry* entry = lc->getOrInsert(lockTest.table_id, lockTest.pagenum);
-    lock_t* lock = new lock_t{lockTest.key, lock_mode, entry->getTail(), nullptr, entry, isAcquired};
+    lock_t* lock = new lock_t{key, lock_mode, entry->getTail(), nullptr, entry, isAcquired};
     trx_append_lock(trx_id, lock);
 
     // Check the ancestor

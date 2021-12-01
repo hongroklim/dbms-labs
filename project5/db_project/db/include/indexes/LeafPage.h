@@ -8,6 +8,7 @@ struct slot {
     int64_t key;
     uint16_t val_size;
     uint16_t offset;
+    int trx_id;
 };
 
 class LeafPage : public NodePage {
@@ -16,7 +17,8 @@ private:
     int getSlotIndex(int64_t key);
 
     slot getSlot(uint index);
-    void setSlot(uint index, int64_t key, uint16_t val_size, uint16_t offset);
+    void setSlot(uint index, int64_t key, uint16_t val_size,
+            uint16_t offset, int trx_id);
     void setSlot(slot s);
 
     void del(slot s);
