@@ -167,32 +167,37 @@ void buffer_free_page(int64_t table_id, pagenum_t pagenum){
 // Read an in-memory page into the in-memory page structure(dest)
 void buffer_read_page(int64_t table_id, uint64_t pagenum, page_t* dest){
     // lock the Buffer Manager first
-    //pthread_mutex_lock(&bf->mutex);
+    pthread_mutex_lock(&bf->mutex);
 
-    // find in buffer blocks first
-    block_t* block = buffer_find_block(table_id, pagenum);
+    block_t* block;
+    try{
+        // find in buffer blocks first
+        block = buffer_find_block(table_id, pagenum);
 
-    // if not exists
-    if(block == nullptr){
-        block = buffer_empty_block();
+        // if not exists
         if(block == nullptr){
-            throw std::runtime_error("failed to allocate buffer block.");
+            block = buffer_empty_block();
+            if(block == nullptr){
+                throw std::runtime_error("failed to allocate buffer block.");
+            }
+
+            // set metadata
+            block->table_id = table_id;
+            block->pagenum = pagenum;
+            block->is_dirty = false;
+
+            // read page from the file system
+            file_read_page(table_id, pagenum, block->page);
+        }else{ // block != nullptr
+            // if exists, pop the block in neighbors
+            buffer_pop_chain(block);
         }
-
-        // set metadata
-        block->table_id = table_id;
-        block->pagenum = pagenum;
-        block->is_dirty = false;
-
-        // read page from the file system
-        file_read_page(table_id, pagenum, block->page);
-    }else{ // block != nullptr
-        // if exists, pop the block in neighbors
-        buffer_pop_chain(block);
+    }catch(std::exception &e){
+        std::cout << e.what() << std::endl;
     }
 
     // set pinned
-    // TODO pthread_mutex_lock(&block->mutex);
+    pthread_mutex_lock(&block->mutex);
     block->lockCnt++;
 
     // chain in LRU list
