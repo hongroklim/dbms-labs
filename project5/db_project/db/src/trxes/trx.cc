@@ -159,6 +159,11 @@ std::vector<lock_t*> lock_find_prev_locks(LockEntry* entry, lock_t* newLock){
         
         // Break conditions
         if(lock->lockMode == LOCK_TYPE_EXCLUSIVE){
+            if(locks.size() > 0 && locks.back()->lockMode == LOCK_TYPE_SHARED){
+                // Skip the situation when X ... S ... (X)
+                break;
+            }
+            
             // If encountered lock is X (whatever acquired or not)
             locks.push_back(lock);
             break;
@@ -315,11 +320,13 @@ bool trx_dead_lock(int trxId, std::vector<lock_t*> prevLocks){
         lock_t* prevTrxLock;
         std::vector<lock_t*> prevPrevLocks;
 
+        // Check Horizontally
         for(auto prevLock : prevLocks){
             // Why the prevLock's transaction isn't terminated?
             if(prevLock->trxId == trxId)
                 return true;
 
+            // Check Vertically
             prevTrxLock = tc->getHead(prevLock->trxId);
             while(prevTrxLock != nullptr){
                 if(!prevTrxLock->isAcquired){

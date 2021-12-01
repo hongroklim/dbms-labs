@@ -162,12 +162,12 @@ TEST(ScenarioLockTest, xLock){
 	int trx_01 = trx_begin();
 	int trx_02 = trx_begin();
 
-	lock_test_append(trx_01, LOCK_TYPE_SHARED, true);
 	lock_test_append(trx_01, LOCK_TYPE_EXCLUSIVE, true);
-	lock_test_append(trx_02, LOCK_TYPE_SHARED, false);
+	lock_test_append(trx_01, LOCK_TYPE_SHARED, true);
+	lock_test_append(trx_01, LOCK_TYPE_SHARED, false);
 	lock_test_append(trx_02, LOCK_TYPE_SHARED, false);
 
-	EXPECT_EQ(lock_acquire(999, 999, 999, trx_01, LOCK_TYPE_EXCLUSIVE) != nullptr, true);
+	EXPECT_EQ(lock_acquire(999, 999, 999, trx_02, LOCK_TYPE_EXCLUSIVE) != nullptr, true);
 
 	lock_test_clear();
 }
