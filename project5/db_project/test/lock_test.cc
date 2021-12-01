@@ -30,7 +30,7 @@ static constexpr int MAX_VAL_SIZE { 112 };
 static constexpr int BUFFER_SIZE { 20 };
 
 TEST(LockTest, main){
-	//GTEST_SKIP();
+	GTEST_SKIP();
 
 	int64_t table_id;
 	int64_t key;
@@ -152,4 +152,22 @@ func_exit:
 	}
 	std::cout << "[SHUTDOWN END]\n";
 	return;
+}
+
+TEST(ScenarioLockTest, xLock){
+	if (init_db(BUFFER_SIZE) != 0) {
+		std::cout << "Failed to initialize" << std::endl;
+	}
+
+	int trx_01 = trx_begin();
+	int trx_02 = trx_begin();
+
+	lock_test_append(trx_01, LOCK_TYPE_SHARED, true);
+	lock_test_append(trx_01, LOCK_TYPE_EXCLUSIVE, true);
+	lock_test_append(trx_02, LOCK_TYPE_SHARED, false);
+	lock_test_append(trx_02, LOCK_TYPE_SHARED, false);
+
+	EXPECT_EQ(lock_acquire(999, 999, 999, trx_01, LOCK_TYPE_EXCLUSIVE) != nullptr, true);
+
+	lock_test_clear();
 }

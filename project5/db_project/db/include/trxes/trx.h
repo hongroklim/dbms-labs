@@ -15,6 +15,10 @@ int init_lock_table();
 
 lock_t* lock_acquire(int64_t table_id, pagenum_t pagenum, int64_t key, int trx_id, int lock_mode);
 
+void lock_test_append(int trx_id, int lock_mode, bool isAcquired);
+
+void lock_test_clear();
+
 int lock_record(lock_t* lock_obj, char* org_value, uint16_t org_val_size);
 
 int lock_release(lock_t* lock_obj);

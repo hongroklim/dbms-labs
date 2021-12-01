@@ -70,9 +70,11 @@ lock_t* lock_acquire(int64_t table_id, pagenum_t pagenum, int64_t key, int trx_i
 
     // Whether it has been already acquired in the same Transaction
     lock_t* lock = trx_find_acquired_lock(trx_id, table_id, pagenum, key, lock_mode);
-    if(lock != nullptr)
+    if(lock != nullptr){
+        pthread_mutex_unlock(entry->getMutex());
         return lock;
-
+    }
+        
     // Create a new lock
     lock = new lock_t{key, lock_mode, entry->getTail(), nullptr, entry, false};
     trx_append_lock(trx_id, lock);
@@ -83,6 +85,7 @@ lock_t* lock_acquire(int64_t table_id, pagenum_t pagenum, int64_t key, int trx_i
     // Detect Dead lock
     if(trx_dead_lock(trx_id, prevLocks)){
         std::cout << "Deadlock detected" << std::endl;
+        pthread_mutex_unlock(entry->getMutex());
 
         delete lock;
         return nullptr;
@@ -174,6 +177,43 @@ std::vector<lock_t*> lock_find_prev_locks(LockEntry* entry, lock_t* newLock){
     return locks;
 }
 
+struct lock_test_info_t {
+    int64_t table_id = 999;
+    pagenum_t pagenum = 999;
+    int64_t key = 999;
+    std::vector<int> trx;
+};
+
+lock_test_info_t lockTest;
+
+void lock_test_append(int trx_id, int lock_mode, bool isAcquired){
+    if(std::find(lockTest.trx.begin(), lockTest.trx.end(), trx_id) == lockTest.trx.end()){
+        lockTest.trx.push_back(trx_id);
+    }
+
+    LockEntry* entry = lc->getOrInsert(lockTest.table_id, lockTest.pagenum);
+    lock_t* lock = new lock_t{lockTest.key, lock_mode, entry->getTail(), nullptr, entry, isAcquired};
+    trx_append_lock(trx_id, lock);
+
+    // Check the ancestor
+    if(entry->getHead() == nullptr){
+        // Set head and tail
+        entry->setHead(lock);
+
+    }else{
+        // Append behind the tail
+        entry->getTail()->next = lock;
+    }
+
+    // Append the last
+    entry->setTail(lock);
+}
+
+void lock_test_clear(){
+    for(auto trxId : lockTest.trx){
+        trx_commit(trxId);
+    }
+}
 
 int lock_record(lock_t* lock_obj, char* org_value, uint16_t org_val_size){
     lock_obj->org_value = new char[org_val_size];
