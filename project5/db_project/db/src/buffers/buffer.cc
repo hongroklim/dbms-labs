@@ -167,7 +167,7 @@ void buffer_free_page(int64_t table_id, pagenum_t pagenum){
 // Read an in-memory page into the in-memory page structure(dest)
 void buffer_read_page(int64_t table_id, uint64_t pagenum, page_t* dest){
     // lock the Buffer Manager first
-    pthread_mutex_lock(&bf->mutex);
+    //pthread_mutex_lock(&bf->mutex);
 
     // find in buffer blocks first
     block_t* block = buffer_find_block(table_id, pagenum);
@@ -192,7 +192,7 @@ void buffer_read_page(int64_t table_id, uint64_t pagenum, page_t* dest){
     }
 
     // set pinned
-    pthread_mutex_lock(&block->mutex);
+    // TODO pthread_mutex_lock(&block->mutex);
     block->lockCnt++;
 
     // chain in LRU list

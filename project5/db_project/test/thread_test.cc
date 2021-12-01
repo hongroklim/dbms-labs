@@ -27,21 +27,27 @@ void* xlock_func(void* arg){
     int trx_id = trx_begin();
 
 	uint16_t tmp_val_size = 0;
-	if(db_update(table_id, 1, const_cast<char*>(
-			std::string(CHARACTERS, 1, 50).c_str()),
-			std::string(CHARACTERS, 1, 50).size(),
-			&tmp_val_size, trx_id) != 0){
-		
-		pthread_mutex_lock(&mutex);
-		err_cnt++;
-		pthread_mutex_unlock(&mutex);
+	for(int i=1; i<=1; i++){
+		if(db_update(table_id, i, const_cast<char*>(
+				std::string(CHARACTERS, 1, 50).c_str()),
+				std::string(CHARACTERS, 1, 50).size(),
+				&tmp_val_size, trx_id) != 0){
+			
+			pthread_mutex_lock(&mutex);
+			err_cnt++;
+			pthread_mutex_unlock(&mutex);
+
+			return NULL;
+
+		}else{
+			pthread_mutex_lock(&mutex);
+			success_cnt++;
+			pthread_mutex_unlock(&mutex);
+		}
 	}
 
-    trx_commit(trx_id);
+    //trx_commit(trx_id);
 
-	pthread_mutex_lock(&mutex);
-	success_cnt++;
-	pthread_mutex_unlock(&mutex);
 	return NULL;
 };
 
@@ -51,12 +57,12 @@ TEST(MainTest, main){
 		return;
 	}
 
-	table_id = open_table((char*)"table2");
+	table_id = open_table((char*)"table3");
     if(table_id <= 0){
         std::cout << "Failed to open table" << std::endl;
 		return;
     }
-
+	/*
 	std::cout << "[INSERT START]" << std::endl;
 
     db_insert(table_id, 1, 
@@ -68,6 +74,7 @@ TEST(MainTest, main){
 		std::string(CHARACTERS, 5, 60).size());
 
 	std::cout << "[INSERT END]" << std::endl;
+	*/
 
 	pthread_t	threads[THREAD_NUMBER];
 	srand(time(NULL));
