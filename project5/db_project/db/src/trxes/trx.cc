@@ -272,22 +272,25 @@ bool trx_dead_lock(int trxId, std::vector<lock_t*> prevLocks){
     if(prevLocks.size() > 0){
         // Check previous locks' transactions
         lock_t* prevTrxLock;
-        std::vector<lock_t*> prevTrxLocks;
+        std::vector<lock_t*> prevPrevLocks;
+
         for(auto prevLock : prevLocks){
             // Why the prevLock's transaction isn't terminated?
+            if(prevLock->trxId == trxId)
+                return true;
+
             prevTrxLock = tc->getHead(prevLock->trxId);
             while(prevTrxLock != nullptr){
-                if(prevTrxLock->trxId == trxId){
-                    return true;
+                if(!prevTrxLock->isAcquired){
+                    // Check the waiting locks
+                    prevPrevLocks = lock_find_prev_locks(
+                        prevTrxLock->sentinel, prevTrxLock);
+                    
+                    if(trx_dead_lock(trxId, prevPrevLocks)){
+                        return true;
+                    }
                 }
-                
-                prevTrxLocks = lock_find_prev_locks(prevTrxLock->sentinel, prevTrxLock);
-                if(!prevTrxLock->isAcquired && trx_dead_lock(trxId, prevTrxLocks)){
-                    return true;
-                }else{
-                    // Continue
-                    prevTrxLock = prevTrxLock->trxNext;
-                }
+                prevTrxLock = prevTrxLock->trxNext;
             }
         }
     }
