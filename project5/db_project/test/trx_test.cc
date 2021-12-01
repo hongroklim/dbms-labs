@@ -98,7 +98,7 @@ TEST(ApiTest, main){
 		// std::shuffle(key_value_pairs.begin(), key_value_pairs.end(), rng);
 		std::cout << "[INSERT START]\n";
 		for (const auto& kv: key_value_pairs) {
-			std::cout << "insert " << kv.first << std::endl;
+			// std::cout << "insert " << kv.first << std::endl;
 			if (db_insert(t.second, kv.first, const_cast<char*>(kv.second.c_str()), kv.second.size()) != 0) {
 				goto func_exit;
 			}
@@ -113,7 +113,7 @@ TEST(ApiTest, main){
 		for (const auto& kv: key_value_pairs) {
 			ret_size = 0;
 			memset(ret_value, 0x00, MAX_VAL_SIZE);
-            std::cout << "find " << kv.first << std::endl;
+            // std::cout << "find " << kv.first << std::endl;
             if (db_find(t.second, kv.first, ret_value, &ret_size, trxId) != 0) {
                 std::cout << "failed to find " << kv.first << std::endl;
 				goto func_exit;
@@ -124,7 +124,29 @@ TEST(ApiTest, main){
 			}
 		}
 		std::cout << "[FIND END]\n";
+        
+        // TODO debug
+        trx_commit(trxId);
 
+		trxId = trx_begin();
+        //std::shuffle(key_value_pairs.begin(), key_value_pairs.end(), rng);
+
+        std::cout << "[FIND START]\n";
+		for (const auto& kv: key_value_pairs) {
+			ret_size = 0;
+			memset(ret_value, 0x00, MAX_VAL_SIZE);
+            // std::cout << "find " << kv.first << std::endl;
+            if (db_find(t.second, kv.first, ret_value, &ret_size, trxId) != 0) {
+                std::cout << "failed to find " << kv.first << std::endl;
+				goto func_exit;
+			} else if (kv.second.size() != ret_size ||
+					kv.second != std::string(ret_value, ret_size)) {
+                std::cout << "failed to find correct " << kv.first << std::endl;
+				goto func_exit;
+			}
+		}
+		std::cout << "[FIND END]\n";
+        
         // TODO debug
         trx_commit(trxId);
 	}

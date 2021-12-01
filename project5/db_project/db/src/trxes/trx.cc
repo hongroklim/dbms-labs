@@ -181,6 +181,12 @@ int lock_release(lock_t* lock_obj) {
     if(entry->getTail() == lock_obj)
         entry->setTail(lock_obj->prev);
 
+    // Modify neighbor's reference
+    if(lock_obj->prev != nullptr)
+        lock_obj->prev->next = lock_obj->next;
+    if(lock_obj->next != nullptr)
+        lock_obj->next->prev = lock_obj->prev;
+
     // Delete itself
     if(!isWaits)
         delete lock_obj;
