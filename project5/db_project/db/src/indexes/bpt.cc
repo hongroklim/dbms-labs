@@ -307,6 +307,12 @@ int db_update(int64_t table_id, int64_t key, char* values, uint16_t new_val_size
         if(lock == nullptr)
             throw std::runtime_error("Failed to acquire a lock");
 
+        // Then recall the leaf from the buffer
+        // It might be changed by an implicit lock
+        pagenum_t leafPagenum = leafPage->getPagenum();
+        delete leafPage;
+        leafPage = new LeafPage(table_id, leafPagenum);
+
         // keep the original value
         char org_value[108];
         uint16_t org_val_size = 0;

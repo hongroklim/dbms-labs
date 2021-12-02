@@ -107,9 +107,11 @@ lock_t* lock_acquire(int64_t table_id, pagenum_t pagenum, int64_t key, int trx_i
             buffer_unpin(table_id, pagenum);
             pthread_mutex_lock(entry->getMutex());
 
-            // Extract as if there is explicit one
             if(entry->getHead() == nullptr)
                 entry->setHead(prevLock);
+
+            if(entry->getTail() == nullptr)
+                entry->setTail(prevLock);
             else
                 entry->getTail()->next = prevLock;
 
@@ -273,7 +275,7 @@ lock_t* lock_implicit(lock_t* lock_obj){
         pthread_mutex_unlock(implicitContainer->getMutex());
     }
 
-    // It means that there is no implicit lock
+    // It means that there is no precedent implicit lock
     return nullptr;
 }
 
@@ -319,7 +321,7 @@ int lock_release(lock_t* lock_obj) {
     LockEntry* entry = lock_obj->sentinel;
 
     // Lock the entry
-    buffer_unpin(entry->getTableId(), entry->getPagenum());
+    //buffer_unpin(entry->getTableId(), entry->getPagenum());
     pthread_mutex_lock(entry->getMutex());
 
     // Signal the descendants
@@ -349,7 +351,7 @@ int lock_release(lock_t* lock_obj) {
 
     // Unlock the entry
     pthread_mutex_unlock(entry->getMutex());
-    buffer_pin(entry->getTableId(), entry->getPagenum());
+    //buffer_pin(entry->getTableId(), entry->getPagenum());
 
     return 0;
 }

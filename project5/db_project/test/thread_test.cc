@@ -27,8 +27,8 @@ void* xlock_func(void* arg){
     int trx_id = trx_begin();
 
 	uint16_t tmp_val_size = 0;
-	for(int i=1; i<=2; i++){
-		if(db_update(table_id, i, const_cast<char*>(
+	for(int i=1; i<=1; i++){
+		if(db_update(table_id, 1, const_cast<char*>(
 				std::string(CHARACTERS, 1, 50).c_str()),
 				std::string(CHARACTERS, 1, 50).size(),
 				&tmp_val_size, trx_id) != 0){
@@ -46,10 +46,36 @@ void* xlock_func(void* arg){
 		}
 	}
 
-    // trx_commit(trx_id);
+    trx_commit(trx_id);
 
 	return nullptr;
 };
+
+void* slock_func(void* arg){
+    int trx_id = trx_begin();
+
+    char* tml_val = new char[108];
+    uint16_t tmp_val_size = 0;
+    for(int i=1; i<=2; i++){
+        if(db_find(table_id, 1, tml_val, &tmp_val_size, trx_id) != 0){
+
+            pthread_mutex_lock(&mutex);
+            err_cnt++;
+            pthread_mutex_unlock(&mutex);
+
+            return nullptr;
+
+        }else{
+            pthread_mutex_lock(&mutex);
+            success_cnt++;
+            pthread_mutex_unlock(&mutex);
+        }
+    }
+
+    trx_commit(trx_id);
+
+    return nullptr;
+}
 
 TEST(MainTest, main){
     if(init_db(20) != 0){
@@ -79,7 +105,7 @@ TEST(MainTest, main){
 	srand(time(nullptr));
 
 	for (int i = 0; i < THREAD_NUMBER; i++) {
-		pthread_create(&threads[i], 0, xlock_func, nullptr);
+		pthread_create(&threads[i], 0, slock_func, nullptr);
 	}
 
 	for (int i = 0; i < THREAD_NUMBER; i++) {
