@@ -5,7 +5,7 @@
 
 class LockEntry {
 private:
-    int table_id;
+    int64_t table_id;
     uint64_t pagenum;
 
     lock_t* tail;
@@ -16,13 +16,13 @@ private:
     pthread_mutex_t mutex{};
 
 public:
-    LockEntry(int table_id, uint64_t pagenum);
+    LockEntry(int64_t table_id, uint64_t pagenum);
     ~LockEntry();
 
     int getTableId();
     uint64_t getPagenum();
 
-    bool equals(int table_id, uint64_t pagenum);
+    bool equals(int64_t table_id, uint64_t pagenum);
 
     void setNext(LockEntry* next);
     LockEntry* getNext();

@@ -340,6 +340,7 @@ int db_read_trx(int64_t table_id, uint64_t pagenum, int64_t key){
 
     }catch(std::exception &e){
         std::cout << e.what() << std::endl;
+        delete leafPage;
         return -1;
     }
 

@@ -192,19 +192,22 @@ void buffer_read_page(int64_t table_id, uint64_t pagenum, page_t* dest){
             // if exists, pop the block in neighbors
             buffer_pop_chain(block);
         }
+
     }catch(std::exception &e){
         std::cout << e.what() << std::endl;
+        pthread_mutex_unlock(&bf->mutex);
+        return;
     }
 
-    // set pinned
-    pthread_mutex_lock(&block->mutex);
-    block->lockCnt++;
-
-    // chain in LRU list
+    // chain in LRU list then unlock the buffer
     buffer_head_chain(block);
-
-    // unlock
     pthread_mutex_unlock(&bf->mutex);
+
+    // Waiting for the block's mutex
+    pthread_mutex_lock(&block->mutex);
+
+    // set pinned
+    block->lockCnt++;
 
     // write into parameter
     memcpy(dest->data, block->page->data, PAGE_SIZE);

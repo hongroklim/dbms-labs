@@ -17,13 +17,13 @@ LockContainer::~LockContainer(){
     }
 }
 
-std::size_t LockContainer::getHashKey(int table_id, uint64_t pagenum){
+std::size_t LockContainer::getHashKey(int64_t table_id, uint64_t pagenum){
     uint64_t merged = table_id + pagenum;
     std::size_t hashKey = std::hash<uint64_t>{}(merged);
     return hashKey;
 }
 
-LockEntry* LockContainer::getOrInsert(int table_id, uint64_t pagenum){
+LockEntry* LockContainer::getOrInsert(int64_t table_id, uint64_t pagenum){
     // Hashing given parameters
     std::size_t hashKey = getHashKey(table_id, pagenum);
     

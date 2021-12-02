@@ -17,7 +17,7 @@ static const std::string CHARACTERS {
 	"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"};
 
 int64_t table_id = 0;
-int THREAD_NUMBER = 3;
+int THREAD_NUMBER = 10;
 
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 int err_cnt = 0;
@@ -28,7 +28,7 @@ void* xlock_func(void* arg){
 
 	uint16_t tmp_val_size = 0;
 	for(int i=1; i<=2; i++){
-		if(db_update(table_id, i%2+1, const_cast<char*>(
+		if(db_update(table_id, i, const_cast<char*>(
 				std::string(CHARACTERS, 1, 50).c_str()),
 				std::string(CHARACTERS, 1, 50).size(),
 				&tmp_val_size, trx_id) != 0){
@@ -37,7 +37,7 @@ void* xlock_func(void* arg){
 			err_cnt++;
 			pthread_mutex_unlock(&mutex);
 
-			return NULL;
+			return nullptr;
 
 		}else{
 			pthread_mutex_lock(&mutex);
@@ -46,9 +46,9 @@ void* xlock_func(void* arg){
 		}
 	}
 
-    trx_commit(trx_id);
+    // trx_commit(trx_id);
 
-	return NULL;
+	return nullptr;
 };
 
 TEST(MainTest, main){
@@ -76,14 +76,14 @@ TEST(MainTest, main){
 	std::cout << "[INSERT END]" << std::endl;
 
 	pthread_t	threads[THREAD_NUMBER];
-	srand(time(NULL));
+	srand(time(nullptr));
 
 	for (int i = 0; i < THREAD_NUMBER; i++) {
-		pthread_create(&threads[i], 0, xlock_func, NULL);
+		pthread_create(&threads[i], 0, xlock_func, nullptr);
 	}
 
 	for (int i = 0; i < THREAD_NUMBER; i++) {
-		pthread_join(threads[i], NULL);
+		pthread_join(threads[i], nullptr);
 	}
 
 	shutdown_db();

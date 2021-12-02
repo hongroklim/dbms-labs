@@ -1,6 +1,6 @@
 #include "trxes/LockEntry.h"
 
-LockEntry::LockEntry(int table_id, uint64_t pagenum){
+LockEntry::LockEntry(int64_t table_id, uint64_t pagenum){
     this->table_id = table_id;
     this->pagenum = pagenum;
 
@@ -23,7 +23,7 @@ uint64_t LockEntry::getPagenum(){
     return this->pagenum;
 }
 
-bool LockEntry::equals(int table_id, uint64_t pagenum){
+bool LockEntry::equals(int64_t table_id, uint64_t pagenum){
     return this->table_id == table_id && this->pagenum == pagenum;
 }
 
