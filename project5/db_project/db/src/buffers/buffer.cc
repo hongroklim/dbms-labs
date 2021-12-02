@@ -122,10 +122,11 @@ pagenum_t buffer_alloc_page(int64_t table_id){
     block->table_id = table_id;
     block->pagenum = pagenum;
     block->is_dirty = false;
-    //block->mutex = PTHREAD_MUTEX_INITIALIZER;
 
     // chain in LRU list
+    pthread_mutex_lock(&bf->mutex);
     buffer_head_chain(block);
+    pthread_mutex_unlock(&bf->mutex);
 
     return pagenum;
 }
@@ -142,7 +143,6 @@ void buffer_free_page(int64_t table_id, pagenum_t pagenum){
         block->table_id = 0;
         block->pagenum = 0;
         block->is_dirty = false;
-        pthread_mutex_unlock(&block->mutex);
         block->lockCnt = 0;
 
         // modify neighbors
@@ -204,10 +204,7 @@ void buffer_read_page(int64_t table_id, uint64_t pagenum, page_t* dest){
     pthread_mutex_unlock(&bf->mutex);
 
     // Waiting for the block's mutex
-    pthread_mutex_lock(&block->mutex);
-
-    // set pinned
-    block->lockCnt++;
+    buffer_pin(block);
 
     // write into parameter
     memcpy(dest->data, block->page->data, PAGE_SIZE);
@@ -245,12 +242,29 @@ bool buffer_is_pinned(block_t* block){
     return block->lockCnt > 0;
 }
 
+int buffer_pin(block_t* block){
+    pthread_mutex_lock(&block->mutex);
+    block->lockCnt++;
+
+    // TODO debug
+    /*
+    if(block->pagenum != 0){
+        std::cout << std::setw(3) << block->pagenum << " : ";
+        buffer_print();
+    }
+     */
+
+    return 0;
+}
+
 int buffer_pin(int64_t table_id, pagenum_t pagenum){
     block_t* block = buffer_find_block(table_id, pagenum);
     if(block != nullptr){
-        pthread_mutex_lock(&block->mutex);
-        block->lockCnt++;
+        buffer_pin(block);
+    }else{
+        std::cout << "failed to find buffer of " << pagenum  << " (pagenum)" << std::endl;
     }
+
     return 0;
 }
 
@@ -340,14 +354,6 @@ void buffer_pop_chain(block_t* block){
 }
 
 void buffer_head_chain(block_t* block){
-    // TODO debug
-    /*
-    if(block->pagenum != 0){
-        std::cout << std::setw(3) << block->pagenum << " : ";
-        buffer_print();
-    }
-    */
-
     if(bf->headBlock == block)
         return;
 

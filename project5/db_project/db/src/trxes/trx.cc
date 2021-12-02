@@ -77,13 +77,20 @@ lock_t* lock_acquire(int64_t table_id, pagenum_t pagenum, int64_t key, int trx_i
     pthread_mutex_lock(entry->getMutex());
 
     // Whether it has been already acquired in the same Transaction
-    lock_t* lock = trx_find_acquired_lock(trxContainer, trx_id, table_id,
-                                            pagenum, key, lock_mode);
+    lock_t* lock = trx_find_acquired_lock(trxContainer, trx_id, table_id, pagenum, key, lock_mode);
     if(lock != nullptr){
         pthread_mutex_unlock(entry->getMutex());
         buffer_pin(table_id, pagenum);
-
         return lock;
+
+    }else{
+        // Search for implicit locks
+        lock = trx_find_acquired_lock(implicitContainer, trx_id, table_id, pagenum, key, lock_mode);
+        if(lock != nullptr){
+            pthread_mutex_unlock(entry->getMutex());
+            buffer_pin(table_id, pagenum);
+            return lock;
+        }
     }
         
     // Create a new lock
@@ -130,7 +137,7 @@ lock_t* lock_acquire(int64_t table_id, pagenum_t pagenum, int64_t key, int trx_i
 
     // Detect Dead lock
     if(trx_dead_lock(trx_id, prevLocks)){
-        std::cout << "Deadlock detected" << std::endl;
+        std::cout << "Deadlock detected for " << trx_id << "," << key << std::endl;
 
         pthread_mutex_unlock(entry->getMutex());
         buffer_pin(table_id, pagenum);
