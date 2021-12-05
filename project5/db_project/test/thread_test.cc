@@ -9,15 +9,17 @@
 #include <cstring>
 #include <stdio.h>
 #include <pthread.h>
+#include <chrono>
 #include <unistd.h>
 #include <stdlib.h>
 #include <time.h>
+#include <thread>
 
 static const std::string CHARACTERS {
 	"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"};
 
 int64_t table_id = 0;
-int THREAD_NUMBER = 3;
+int THREAD_NUMBER = 5;
 int KEY_COUNT = 5;
 
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -31,7 +33,7 @@ void* slock_func(void* arg){
     char* tml_val = new char[108];
     uint16_t tmp_val_size = 0;
     for(int i=1; i<=KEY_COUNT; i++){
-        key = rand()%3+1;
+        key = rand()%KEY_COUNT+1;
         if(db_find(table_id, key, tml_val, &tmp_val_size, trx_id) == 0){
             std::cout << "S lock " << trx_id << "," << key << std::endl;
             pthread_mutex_lock(&mutex);
@@ -56,35 +58,40 @@ void* slock_func(void* arg){
 void* xlock_func(void* arg){
     //long tid = (long)arg;
     int trx_id = trx_begin();
+    std::this_thread::sleep_for(std::chrono::milliseconds((trx_id*rand())%200+1));
+    std::cout << "    begin " << trx_id << std::endl;
 
     int64_t key;
 	uint16_t tmp_val_size = 0;
 	for(int i=1; i<=KEY_COUNT; i++){
-        key = rand()%3+1;
-        std::cout << "X  try " << trx_id << "," << key << std::endl;
+        std::this_thread::sleep_for(std::chrono::milliseconds((trx_id*rand())%200+1));
 
-		if(db_update(table_id, 1, const_cast<char*>(
+        key = (rand()+trx_id)%KEY_COUNT+1;
+        std::cout << "X     try " << trx_id << "," << key << std::endl;
+
+		if(db_update(table_id, key, const_cast<char*>(
 				std::string(CHARACTERS, 1, 50).c_str()),
 				std::string(CHARACTERS, 1, 50).size(),
 				&tmp_val_size, trx_id) == 0){
 
-            std::cout << "X lock " << trx_id << "," << key << std::endl;
+            std::cout << "X    lock " << trx_id << "," << key << std::endl;
 			pthread_mutex_lock(&mutex);
             success_cnt++;
 			pthread_mutex_unlock(&mutex);
 
 		}else{
-            std::cout << "X fail " << trx_id << "," << key << std::endl;
+            std::cout << "X    fail " << trx_id << "," << key << std::endl;
 			pthread_mutex_lock(&mutex);
 			err_cnt++;
 			pthread_mutex_unlock(&mutex);
+            std::cout << "X release " << trx_id << " (fail)" << std::endl;
             return nullptr;
 		}
 
-        usleep(rand()%300+1);
 	}
 
     trx_commit(trx_id);
+    std::cout << "  release " << trx_id << std::endl;
 	return nullptr;
 }
 

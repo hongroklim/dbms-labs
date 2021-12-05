@@ -20,6 +20,7 @@ struct lock_t {
     LockEntry* sentinel{};
 
     bool isAcquired{};
+    bool isReleased{};
 
     lock_t* trxNext{};
     int trxId = 0;
@@ -48,7 +49,7 @@ TrxContainer* trxContainer{};
 TrxContainer* implicitContainer{};
 
 // Methods' Headers
-std::vector<lock_t*> lock_find_prev_locks(LockEntry* entry, lock_t* newLock);
+std::vector<lock_t*> lock_find_prev_locks(LockEntry* entry, lock_t* lock);
 lock_t* trx_find_acquired_lock(TrxContainer* container, int trxId,
                 int64_t table_id, pagenum_t pagenum, int64_t key, int lockMode);
 bool trx_dead_lock(int trxId, std::vector<lock_t*> prevLocks);
@@ -94,7 +95,7 @@ lock_t* lock_acquire(int64_t table_id, pagenum_t pagenum, int64_t key, int trx_i
     }
         
     // Create a new lock
-    lock = new lock_t{key, lock_mode, entry->getTail(), nullptr, entry, false};
+    lock = new lock_t{key, lock_mode, entry->getTail(), nullptr, entry, false, false};
     lock->trxId = trx_id;
 
     // whether pass or wait?
@@ -117,15 +118,21 @@ lock_t* lock_acquire(int64_t table_id, pagenum_t pagenum, int64_t key, int trx_i
             if(entry->getHead() == nullptr)
                 entry->setHead(prevLock);
 
-            if(entry->getTail() == nullptr)
+            if(entry->getTail() == nullptr){
+                prevLock->prev = nullptr;
                 entry->setTail(prevLock);
-            else
-                entry->getTail()->next = prevLock;
+            }else{
+                prevLock->prev = entry->getTail();
+                prevLock->prev->next = prevLock;
+            }
 
+            // Append the last
+            entry->setTail(prevLock);
             prevLocks.push_back(prevLock);
 
         }else if(lock->lockMode == LOCK_TYPE_EXCLUSIVE){
             // Success to become an implicit one
+            lock->isAcquired = true;
             return lock;
 
         }else if(lock->lockMode == LOCK_TYPE_SHARED){
@@ -135,7 +142,6 @@ lock_t* lock_acquire(int64_t table_id, pagenum_t pagenum, int64_t key, int trx_i
         }
     }
 
-    // Detect Dead lock
     if(trx_dead_lock(trx_id, prevLocks)){
         std::cout << "Deadlock detected for " << trx_id << "," << key << std::endl;
 
@@ -155,10 +161,10 @@ lock_t* lock_acquire(int64_t table_id, pagenum_t pagenum, int64_t key, int trx_i
     if(entry->getHead() == nullptr){
         // Set head and tail
         entry->setHead(lock);
-
     }else{
         // Append behind the tail
-        entry->getTail()->next = lock;
+        lock->prev = entry->getTail();
+        lock->prev->next = lock;
     }
 
     // Append the last
@@ -183,7 +189,7 @@ lock_t* lock_acquire(int64_t table_id, pagenum_t pagenum, int64_t key, int trx_i
 
     // Prevent a lost wake-up problem
     bool isWaited = false;
-    if(prevLock->isAcquired){
+    if(!prevLock->isReleased){
         prevLock->waitCnt++;
         isWaited = true;
         pthread_cond_wait(&prevLock->cond, &prevLock->mutex);
@@ -191,6 +197,7 @@ lock_t* lock_acquire(int64_t table_id, pagenum_t pagenum, int64_t key, int trx_i
 
     pthread_mutex_unlock(&prevLock->mutex);
 
+    // Delete the previous lock if necessary
     if(isWaited){
         prevLock->waitCnt--;
         pthread_mutex_unlock(&prevLock->mutex);
@@ -200,45 +207,47 @@ lock_t* lock_acquire(int64_t table_id, pagenum_t pagenum, int64_t key, int trx_i
         }
     }
 
+    lock->isAcquired = true;
     buffer_pin(table_id, pagenum);
     return lock;
 }
 
-std::vector<lock_t*> lock_find_prev_locks(LockEntry* entry, lock_t* newLock){
+std::vector<lock_t*> lock_find_prev_locks(LockEntry* entry, lock_t* lock){
     std::vector<lock_t*> locks;
 
-    lock_t* lock = entry->getTail();
-    while(lock != nullptr){
+    lock_t* prevLock = lock->prev != nullptr ? lock : entry->getTail();
+
+    while(prevLock != nullptr){
         // Skip conditions
-        if(lock->key != newLock->key){
-            lock = lock->prev;
+        if(prevLock->key != lock->key){
+            prevLock = prevLock->prev;
             continue;
 
-        }else if(lock->key == newLock->key
-                && lock->trxId == newLock->trxId){
-            lock = lock->prev;
+        }else if(prevLock->key == lock->key
+                 && prevLock->trxId == lock->trxId){
+            prevLock = prevLock->prev;
             continue;
         }
         
         // Break conditions
-        if(lock->lockMode == LOCK_TYPE_EXCLUSIVE){
+        if(prevLock->lockMode == LOCK_TYPE_EXCLUSIVE){
             if(!locks.empty() && locks.back()->lockMode == LOCK_TYPE_SHARED){
                 // Skip the situation when X ... S ... (X)
                 break;
             }
             
             // If encountered lock is X (whatever acquired or not)
-            locks.push_back(lock);
+            locks.push_back(prevLock);
             break;
 
-        }else if(newLock->lockMode == LOCK_TYPE_EXCLUSIVE
-                && lock->lockMode == LOCK_TYPE_SHARED && lock->isAcquired){
+        }else if(lock->lockMode == LOCK_TYPE_EXCLUSIVE
+                 && prevLock->lockMode == LOCK_TYPE_SHARED && prevLock->isAcquired){
             // If new lock is X and encounters acquired S
-            locks.push_back(lock);
+            locks.push_back(prevLock);
         }
 
         // Continue
-        lock = lock->prev;
+        prevLock = prevLock->prev;
     }
 
     // the backward chain is the first
@@ -293,22 +302,25 @@ lock_t* lock_to_explicit(int trx_id, lock_t* new_lock){
     lock_t* prevLock = implicitContainer->getHead(trx_id);
 
     // Find the corresponding implicit one
-    while(prevLock != nullptr && prevLock->key != new_lock->key){
+    while(prevLock != nullptr){
+        if(prevLock->key == new_lock->key)
+            break;
         tmpLock = prevLock;
         prevLock = prevLock->trxNext;
     }
 
     if(prevLock == nullptr){
-        std::cout << "Failed to find the implicit lock" << std::endl;
+        std::cout << "Failed to find a implicit lock " << new_lock->key << std::endl;
         pthread_mutex_unlock(implicitContainer->getMutex());
         return nullptr;
     }
 
     // Unchain the previous references
-    if(tmpLock != nullptr)
-        tmpLock->trxNext = prevLock->trxNext;
-    else
+    if(implicitContainer->getHead(trx_id) == prevLock){
         implicitContainer->setHead(trx_id, nullptr);
+    }else if(tmpLock != nullptr){
+        tmpLock->trxNext = prevLock->trxNext;
+    }
 
     pthread_mutex_unlock(implicitContainer->getMutex());
     return prevLock;
@@ -335,7 +347,7 @@ int lock_release(lock_t* lock_obj) {
     pthread_mutex_lock(&lock_obj->mutex);
 
     bool isWaits = lock_obj->waitCnt > 0;
-    lock_obj->isAcquired = false;
+    lock_obj->isReleased = true;
     pthread_cond_broadcast(&lock_obj->cond);
 
     pthread_mutex_unlock(&lock_obj->mutex);
@@ -413,8 +425,9 @@ int trx_append_lock(TrxContainer* container, int trxId, lock_t* newLock){
 bool trx_dead_lock(int trxId, std::vector<lock_t*> prevLocks){
     if(!prevLocks.empty()){
         // Check previous locks' transactions
+        std::vector<lock_t*> prevTrxLocks;
         lock_t* prevTrxLock;
-        std::vector<lock_t*> prevPrevLocks;
+        std::vector<lock_t*> tmpLocks;
 
         // Check Horizontally
         for(auto prevLock : prevLocks){
@@ -422,19 +435,22 @@ bool trx_dead_lock(int trxId, std::vector<lock_t*> prevLocks){
             if(prevLock->trxId == trxId)
                 return true;
 
-            // Check Vertically
+            // Gather the transaction's waiting locks
+            prevTrxLocks.clear();
             prevTrxLock = trxContainer->getHead(prevLock->trxId);
             while(prevTrxLock != nullptr){
                 if(!prevTrxLock->isAcquired){
-                    // Check the waiting locks
-                    prevPrevLocks = lock_find_prev_locks(
-                        prevTrxLock->sentinel, prevTrxLock);
-                    
-                    if(trx_dead_lock(trxId, prevPrevLocks)){
-                        return true;
+                    tmpLocks = lock_find_prev_locks(prevTrxLock->sentinel, prevTrxLock);
+                    if(!tmpLocks.empty()) {
+                        prevTrxLocks.insert(prevTrxLocks.end(), tmpLocks.begin(), tmpLocks.end());
                     }
                 }
                 prevTrxLock = prevTrxLock->trxNext;
+            }
+
+            // Recursively check the deadlock
+            if(trx_dead_lock(trxId, prevTrxLocks)){
+                return true;
             }
         }
     }
@@ -444,6 +460,7 @@ bool trx_dead_lock(int trxId, std::vector<lock_t*> prevLocks){
 int trx_rollback(TrxContainer* container, int trx_id, bool canRelease){
     pthread_mutex_lock(container->getMutex());
     lock_t* lock = container->getHead(trx_id);
+    pthread_mutex_unlock(container->getMutex());
 
     // Release all locks
     lock_t* tmpLock{};
@@ -467,6 +484,7 @@ int trx_rollback(TrxContainer* container, int trx_id, bool canRelease){
     }
     
     // Remove the transaction
+    pthread_mutex_lock(container->getMutex());
     container->remove(trx_id);
     pthread_mutex_unlock(container->getMutex());
 
@@ -484,6 +502,7 @@ int trx_rollback(int trx_id){
 int trx_commit(TrxContainer* container, int trx_id, bool canRelease){
     pthread_mutex_lock(container->getMutex());
     lock_t *lock = container->getHead(trx_id);
+    pthread_mutex_unlock(container->getMutex());
 
     // Release all locks
     lock_t* tmpLock{};
@@ -499,6 +518,7 @@ int trx_commit(TrxContainer* container, int trx_id, bool canRelease){
     }
     
     // Remove the transaction
+    pthread_mutex_lock(container->getMutex());
     container->remove(trx_id);
     pthread_mutex_unlock(container->getMutex());
 
