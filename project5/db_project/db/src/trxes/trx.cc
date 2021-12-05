@@ -79,19 +79,16 @@ lock_t* lock_acquire(int64_t table_id, pagenum_t pagenum, int64_t key, int trx_i
 
     // Whether it has been already acquired in the same Transaction
     lock_t* lock = trx_find_acquired_lock(trxContainer, trx_id, table_id, pagenum, key, lock_mode);
+
+    // Search for implicit locks
+    if(lock == nullptr)
+        lock = trx_find_acquired_lock(implicitContainer, trx_id, table_id, pagenum, key, lock_mode);
+
     if(lock != nullptr){
         pthread_mutex_unlock(entry->getMutex());
         buffer_pin(table_id, pagenum);
         return lock;
 
-    }else{
-        // Search for implicit locks
-        lock = trx_find_acquired_lock(implicitContainer, trx_id, table_id, pagenum, key, lock_mode);
-        if(lock != nullptr){
-            pthread_mutex_unlock(entry->getMutex());
-            buffer_pin(table_id, pagenum);
-            return lock;
-        }
     }
         
     // Create a new lock
@@ -317,12 +314,14 @@ lock_t* lock_to_explicit(int trx_id, lock_t* new_lock){
 
     // Unchain the previous references
     if(implicitContainer->getHead(trx_id) == prevLock){
-        implicitContainer->setHead(trx_id, nullptr);
+        implicitContainer->setHead(trx_id, prevLock->trxNext);
     }else if(tmpLock != nullptr){
         tmpLock->trxNext = prevLock->trxNext;
     }
 
     pthread_mutex_unlock(implicitContainer->getMutex());
+
+    prevLock->trxNext = nullptr;
     return prevLock;
 }
 

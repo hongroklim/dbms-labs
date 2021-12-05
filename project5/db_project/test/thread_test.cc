@@ -19,7 +19,7 @@ static const std::string CHARACTERS {
 	"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"};
 
 int64_t table_id = 0;
-int THREAD_NUMBER = 5;
+int THREAD_NUMBER = 8;
 int KEY_COUNT = 5;
 
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;

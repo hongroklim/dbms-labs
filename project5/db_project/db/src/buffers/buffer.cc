@@ -262,7 +262,7 @@ int buffer_pin(int64_t table_id, pagenum_t pagenum){
     if(block != nullptr){
         buffer_pin(block);
     }else{
-        std::cout << "failed to find buffer of " << pagenum  << " (pagenum)" << std::endl;
+        std::cout << "[pin] failed to find buffer of " << pagenum  << " (pagenum)" << std::endl;
     }
 
     return 0;
@@ -279,7 +279,7 @@ int buffer_unpin(int64_t table_id, uint64_t pagenum){
 
     block_t* block = buffer_find_block(table_id, pagenum);
     if(block == nullptr){
-        std::cout << "failed to find buffer of " << pagenum  << " (pagenum)" << std::endl;
+        std::cout << "[unpin] failed to find buffer of " << pagenum  << " (pagenum)" << std::endl;
         //buffer_print();
         return -1;
     }else if(buffer_is_pinned(block)){
