@@ -13,17 +13,11 @@ TrxContainer::~TrxContainer(){
 
 int TrxContainer::put(int trxId){
     pthread_mutex_lock(&mutex);
-
-    if(trxId <= 0){
-        // increase the current Transaction ID
-        keyMap->insert({++trxIdSeq, nullptr});
-    }else{
-        // set the designated id
-        keyMap->insert({trxId, nullptr});
-    }
+    int newTrxId = trxId > 0 ? trxId : ++this->trxIdSeq;
+    keyMap->insert({newTrxId, nullptr});
     
     pthread_mutex_unlock(&mutex);
-    return trxIdSeq;
+    return newTrxId;
 }
 
 int TrxContainer::setHead(int trxId, lock_t* lock){
@@ -46,8 +40,12 @@ lock_t* TrxContainer::getHead(int trxId){
     if(entry != keyMap->end()){
         result = entry->second;
     }else{
+        for(const auto& e : *keyMap){
+            std::cout << e.first << ":" << e.second << " ";
+        }
+        std::cout << std::endl;
         std::cout << trxId << " is not found in the transactions" << std::endl;
-        throw std::runtime_error("Failed to find transaction id");
+        return nullptr;
     }
     return result;
 }
