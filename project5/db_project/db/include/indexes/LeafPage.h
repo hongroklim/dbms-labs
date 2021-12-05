@@ -14,7 +14,6 @@ struct slot {
 class LeafPage : public NodePage {
 private:
     int64_t getKey(uint index) override;
-    int getSlotIndex(int64_t key);
 
     slot getSlot(uint index);
     void setSlot(uint index, int64_t key, uint16_t val_size,
@@ -68,6 +67,8 @@ public:
 
     int getTrxId(int64_t key);
     void setTrxId(int64_t key, int trxId);
+
+    int getSlotIndex(int64_t key);
 
     void print() override;
 };

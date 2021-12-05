@@ -27,31 +27,40 @@ int err_cnt = 0;
 int success_cnt = 0;
 
 void* slock_func(void* arg){
+    //long tid = (long)arg;
     int trx_id = trx_begin();
+    std::this_thread::sleep_for(std::chrono::milliseconds((trx_id*rand())%200+1));
+    std::cout << "    begin " << trx_id << std::endl;
 
     int64_t key;
     char* tml_val = new char[108];
     uint16_t tmp_val_size = 0;
     for(int i=1; i<=KEY_COUNT; i++){
-        key = rand()%KEY_COUNT+1;
+        std::this_thread::sleep_for(std::chrono::milliseconds((trx_id*rand())%200+1));
+
+        key = (rand()+trx_id)%KEY_COUNT+1;
+        std::cout << "S     try " << trx_id << "," << key << std::endl;
+
         if(db_find(table_id, key, tml_val, &tmp_val_size, trx_id) == 0){
-            std::cout << "S lock " << trx_id << "," << key << std::endl;
+
+            std::cout << "S    lock " << trx_id << "," << key << std::endl;
             pthread_mutex_lock(&mutex);
             success_cnt++;
             pthread_mutex_unlock(&mutex);
 
         }else{
-            std::cout << "S fail " << trx_id << "," << key << std::endl;
+            std::cout << "S    fail " << trx_id << "," << key << std::endl;
             pthread_mutex_lock(&mutex);
             err_cnt++;
             pthread_mutex_unlock(&mutex);
+            std::cout << "S release " << trx_id << " (fail)" << std::endl;
             return nullptr;
         }
 
-        srand(time(nullptr));
     }
 
     trx_commit(trx_id);
+    std::cout << "  release " << trx_id << std::endl;
     return nullptr;
 }
 
@@ -121,15 +130,13 @@ TEST(MainTest, main){
 	pthread_t	threads[THREAD_NUMBER];
 	srand(time(nullptr));
 
-    /*
     std::cout << "[SLOCK START]" << std::endl;
-	for (int i = 0; i < THREAD_NUMBER; i++)
+	for (long i = 0; i < THREAD_NUMBER; i++)
 		pthread_create(&threads[i], 0, slock_func, (void*)i);
 
-	for (int i = 0; i < THREAD_NUMBER; i++)
+	for (long i = 0; i < THREAD_NUMBER; i++)
 		pthread_join(threads[i], nullptr);
     std::cout << "[SLOCK END]" << std::endl;
-    */
 
     std::cout << "[XLOCK START]" << std::endl;
     for (long i = 0; i < THREAD_NUMBER; i++)

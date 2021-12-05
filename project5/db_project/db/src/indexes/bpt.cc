@@ -369,6 +369,23 @@ void db_write_trx(int64_t table_id, uint64_t pagenum, int64_t key, int trx_id){
     delete leafPage;
 }
 
+int db_key_index(int64_t table_id, uint64_t pagenum, int64_t key){
+    LeafPage* leafPage = new LeafPage(table_id, pagenum);
+
+    int keyIndex = 0;
+    try{
+        keyIndex = leafPage->getSlotIndex(key);
+
+    }catch(std::exception &e){
+        std::cout << e.what() << std::endl;
+        delete leafPage;
+        return -1;
+    }
+
+    delete leafPage;
+    return keyIndex;
+}
+
 int db_undo(int64_t table_id, pagenum_t pagenum, int64_t key,
         char* org_value, uint16_t org_val_size){
     LeafPage* leafPage = new LeafPage(table_id, pagenum);

@@ -12,7 +12,7 @@
 
 struct lock_t {
     int64_t key{};
-    int lockMode;
+    int lockMode{};
 
     lock_t* prev{};
     lock_t* next{};
@@ -31,6 +31,7 @@ struct lock_t {
 
     // Lock Compression
     bool* bitmap{};
+    std::map<int64_t, int>* keyIndexMap{};
 
     // TODO extract into logs
     bool isDirty = false;
@@ -38,6 +39,8 @@ struct lock_t {
     int org_val_size = 0;
 
     ~lock_t(){
+        delete[] bitmap;
+        delete keyIndexMap;
         if(isDirty && org_val_size > 0)
             delete[] org_value;
     }
@@ -50,6 +53,7 @@ TrxContainer* implicitContainer{};
 
 // Methods' Headers
 std::vector<lock_t*> lock_find_prev_locks(LockEntry* entry, lock_t* lock);
+bool lock_key_equals(lock_t *lock, int64_t key);
 lock_t* trx_find_acquired_lock(TrxContainer* container, int trxId,
                 int64_t table_id, pagenum_t pagenum, int64_t key, int lockMode);
 bool trx_dead_lock(int trxId, std::vector<lock_t*> prevLocks);
@@ -70,6 +74,9 @@ lock_t* lock_acquire(int64_t table_id, pagenum_t pagenum, int64_t key, int trx_i
         return nullptr;
     }
 
+    // Get key index
+    int keyIndex = db_key_index(table_id, pagenum, key);
+
     // Unpin first
     buffer_unpin(table_id, pagenum);
 
@@ -81,19 +88,33 @@ lock_t* lock_acquire(int64_t table_id, pagenum_t pagenum, int64_t key, int trx_i
     lock_t* lock = trx_find_acquired_lock(trxContainer, trx_id, table_id, pagenum, key, lock_mode);
 
     // Search for implicit locks
-    if(lock == nullptr)
+    if(lock == nullptr && lock_mode == LOCK_TYPE_EXCLUSIVE)
         lock = trx_find_acquired_lock(implicitContainer, trx_id, table_id, pagenum, key, lock_mode);
 
+    // Keep the lock for the future lock compression
+    lock_t* commonLock = lock;
+    if(lock != nullptr && lock_mode == LOCK_TYPE_SHARED
+            && lock->key != key && !lock_key_equals(lock, key)){
+        // Ignore this if the compressed lock is not matched
+        lock = nullptr;
+    }
+
+    // Early return if it is already acquired
     if(lock != nullptr){
         pthread_mutex_unlock(entry->getMutex());
         buffer_pin(table_id, pagenum);
         return lock;
-
     }
-        
+
     // Create a new lock
     lock = new lock_t{key, lock_mode, entry->getTail(), nullptr, entry, false, false};
     lock->trxId = trx_id;
+    lock->bitmap = new bool[64];
+    lock->keyIndexMap = new std::map<int64_t, int>();
+
+    // Mark the key index as true
+    lock->bitmap[keyIndex] = true;
+    lock->keyIndexMap->insert_or_assign(key, keyIndex);
 
     // whether pass or wait?
     std::vector<lock_t*> prevLocks = lock_find_prev_locks(entry, lock);
@@ -139,6 +160,7 @@ lock_t* lock_acquire(int64_t table_id, pagenum_t pagenum, int64_t key, int trx_i
         }
     }
 
+    // Confirm deadlock situation
     if(trx_dead_lock(trx_id, prevLocks)){
         std::cout << "Deadlock detected for " << trx_id << "," << key << std::endl;
 
@@ -147,6 +169,19 @@ lock_t* lock_acquire(int64_t table_id, pagenum_t pagenum, int64_t key, int trx_i
 
         delete lock;
         return nullptr;
+    }
+
+    // Check if it is possible to apply lock compression
+    if(commonLock != nullptr && prevLocks.empty()){
+        std::cout << "Lock Compression will be applied " << trx_id << "," << key << std::endl;
+        commonLock->bitmap[keyIndex] = true;
+        commonLock->keyIndexMap->insert_or_assign(key, keyIndex);
+
+        pthread_mutex_unlock(entry->getMutex());
+        buffer_pin(table_id, pagenum);
+
+        delete lock;
+        return commonLock;
     }
 
     // Append into the transaction
@@ -216,12 +251,12 @@ std::vector<lock_t*> lock_find_prev_locks(LockEntry* entry, lock_t* lock){
 
     while(prevLock != nullptr){
         // Skip conditions
-        if(prevLock->key != lock->key){
+        if(!lock_key_equals(prevLock, lock->key)){
             prevLock = prevLock->prev;
             continue;
 
-        }else if(prevLock->key == lock->key
-                 && prevLock->trxId == lock->trxId){
+        }else if(lock_key_equals(prevLock, lock->key)
+                && prevLock->trxId == lock->trxId){
             prevLock = prevLock->prev;
             continue;
         }
@@ -249,6 +284,19 @@ std::vector<lock_t*> lock_find_prev_locks(LockEntry* entry, lock_t* lock){
 
     // the backward chain is the first
     return locks;
+}
+
+bool lock_key_equals(lock_t* lock, int64_t key){
+    if(lock->key == key){
+        return true;
+
+    }else if(lock->lockMode == LOCK_TYPE_SHARED){
+        auto kv = lock->keyIndexMap->find(key);
+        if(kv != lock->keyIndexMap->end())
+            return lock->bitmap[kv->second];
+    }
+
+    return false;
 }
 
 lock_t* lock_implicit(lock_t* lock_obj){
@@ -387,15 +435,15 @@ lock_t* trx_find_acquired_lock(TrxContainer* container, int trxId, int64_t table
     pthread_mutex_unlock(container->getMutex());
 
     while(lock != nullptr){
-        if(lock->key == key
-                && lock->sentinel->equals(table_id, pagenum)
+        if(lock->sentinel->equals(table_id, pagenum)
                 && lock->isAcquired
                 && (lock->lockMode == lockMode
                     || lock->lockMode == LOCK_TYPE_EXCLUSIVE)){
-            break;
-        }else{
-            lock = lock->trxNext;
+            if((lockMode == LOCK_TYPE_EXCLUSIVE && lock->key == key)
+                    || lockMode == LOCK_TYPE_SHARED)
+                break;
         }
+        lock = lock->trxNext;
     }
 
     return lock;
