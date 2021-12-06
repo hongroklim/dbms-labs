@@ -39,8 +39,11 @@ struct lock_t {
     int org_val_size = 0;
 
     ~lock_t(){
-        delete[] bitmap;
-        delete keyIndexMap;
+        if(lockMode == LOCK_TYPE_SHARED){
+            delete[] bitmap;
+            delete keyIndexMap;
+        }
+
         if(isDirty && org_val_size > 0)
             delete[] org_value;
     }
@@ -104,12 +107,15 @@ lock_t* lock_acquire(int64_t table_id, pagenum_t pagenum, int64_t key, int trx_i
     // Create a new lock
     lock = new lock_t{key, lock_mode, entry->getTail(), nullptr, entry, false, false};
     lock->trxId = trx_id;
-    lock->bitmap = new bool[64];
-    lock->keyIndexMap = new std::map<int64_t, int>();
 
-    // Mark the key index as true
-    lock->bitmap[keyIndex] = true;
-    lock->keyIndexMap->insert_or_assign(key, keyIndex);
+    if(lock_mode == LOCK_TYPE_SHARED){
+        lock->bitmap = new bool[64];
+        lock->keyIndexMap = new std::map<int64_t, int>();
+
+        // Mark the key index as true
+        lock->bitmap[keyIndex] = true;
+        lock->keyIndexMap->insert_or_assign(key, keyIndex);
+    }
 
     // whether pass or wait?
     std::vector<lock_t*> prevLocks = lock_find_prev_locks(entry, lock);
@@ -167,7 +173,7 @@ lock_t* lock_acquire(int64_t table_id, pagenum_t pagenum, int64_t key, int trx_i
     }
 
     // Check if it is possible to apply lock compression
-    if(sharedLock != nullptr && prevLocks.empty()){
+    if(sharedLock != nullptr && lock_mode == LOCK_TYPE_SHARED && prevLocks.empty()){
         std::cout << "Lock Compression will be applied " << trx_id << "," << key << std::endl;
         sharedLock->bitmap[keyIndex] = true;
         sharedLock->keyIndexMap->insert_or_assign(key, keyIndex);
