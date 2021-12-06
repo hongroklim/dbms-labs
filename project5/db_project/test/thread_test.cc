@@ -19,8 +19,8 @@ static const std::string CHARACTERS {
 	"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"};
 
 int64_t table_id = 0;
-int THREAD_NUMBER = 8;
-int KEY_COUNT = 5;
+int THREAD_NUMBER = 4;
+int KEY_COUNT = 20;
 
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 int err_cnt = 0;
@@ -104,6 +104,43 @@ void* xlock_func(void* arg){
 	return nullptr;
 }
 
+void* mlock_func(void* arg){
+    int trx_id = trx_begin();
+
+    int64_t key;
+    char* tml_val = new char[108];
+    uint16_t tmp_val_size = 0;
+
+    for(int i=1; i<=2*KEY_COUNT; i++){
+        std::this_thread::sleep_for(std::chrono::milliseconds((trx_id*rand())%200+1));
+        key = (rand()+trx_id*trx_id)%KEY_COUNT+1;
+
+        if(rand()%2 == 0){
+            std::cout << "S     try " << trx_id << "," << key << std::endl;
+            if(db_find(table_id, key, tml_val, &tmp_val_size, trx_id) == 0){
+                std::cout << "S    lock " << trx_id << "," << key << std::endl;
+            }else {
+                std::cout << "S release " << trx_id << " (fail)" << std::endl;
+                return nullptr;
+            }
+
+        }else{
+            std::cout << "X     try " << trx_id << "," << key << std::endl;
+            if(db_update(table_id, key, const_cast<char*>(std::string(CHARACTERS, 1, 50).c_str()),
+                         std::string(CHARACTERS, 1, 50).size(), &tmp_val_size, trx_id) == 0){
+                std::cout << "X    lock " << trx_id << "," << key << std::endl;
+            }else{
+                std::cout << "X release " << trx_id << " (fail)" << std::endl;
+                return nullptr;
+            }
+        }
+    }
+
+    trx_commit(trx_id);
+    std::cout << "  release " << trx_id << std::endl;
+    return nullptr;
+}
+
 TEST(MainTest, main){
     if(init_db(20) != 0){
 		std::cout << "Failed to initialize" << std::endl;
@@ -130,6 +167,7 @@ TEST(MainTest, main){
 	pthread_t	threads[THREAD_NUMBER];
 	srand(time(nullptr));
 
+    /*
     std::cout << "[SLOCK START]" << std::endl;
 	for (long i = 0; i < THREAD_NUMBER; i++)
 		pthread_create(&threads[i], 0, slock_func, (void*)i);
@@ -138,6 +176,7 @@ TEST(MainTest, main){
 		pthread_join(threads[i], nullptr);
     std::cout << "[SLOCK END]" << std::endl;
 
+
     std::cout << "[XLOCK START]" << std::endl;
     for (long i = 0; i < THREAD_NUMBER; i++)
         pthread_create(&threads[i], 0, xlock_func, (void*)i);
@@ -145,6 +184,15 @@ TEST(MainTest, main){
     for (long i = 0; i < THREAD_NUMBER; i++)
         pthread_join(threads[i], nullptr);
     std::cout << "[XLOCK END]" << std::endl;
+    */
+
+    std::cout << "[MLOCK START]" << std::endl;
+    for (long i = 0; i < THREAD_NUMBER; i++)
+        pthread_create(&threads[i], 0, mlock_func, (void*)i);
+
+    for (long i = 0; i < THREAD_NUMBER; i++)
+        pthread_join(threads[i], nullptr);
+    std::cout << "[MLOCK END]" << std::endl;
 
 	shutdown_db();
 	std::cout << "[EXECUTE FINISHED]" << std::endl;

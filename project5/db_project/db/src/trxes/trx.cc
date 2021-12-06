@@ -53,7 +53,7 @@ TrxContainer* implicitContainer{};
 
 // Methods' Headers
 std::vector<lock_t*> lock_find_prev_locks(LockEntry* entry, lock_t* lock);
-bool lock_key_equals(lock_t *lock, int64_t key);
+bool lock_contains(lock_t *lock, int64_t key);
 lock_t* trx_find_acquired_lock(TrxContainer* container, int trxId,
                 int64_t table_id, pagenum_t pagenum, int64_t key, int lockMode);
 bool trx_dead_lock(int trxId, std::vector<lock_t*> prevLocks);
@@ -88,13 +88,15 @@ lock_t* lock_acquire(int64_t table_id, pagenum_t pagenum, int64_t key, int trx_i
     lock_t* lock = trx_find_acquired_lock(trxContainer, trx_id, table_id, pagenum, key, lock_mode);
 
     // Search for implicit locks
-    if(lock == nullptr && lock_mode == LOCK_TYPE_EXCLUSIVE)
+    lock_t* sharedLock = lock;
+    if(lock == nullptr){
         lock = trx_find_acquired_lock(implicitContainer, trx_id, table_id, pagenum, key, lock_mode);
+        sharedLock = nullptr;
+    }
 
     // Keep the lock for the future lock compression
-    lock_t* commonLock = lock;
-    if(lock != nullptr && lock_mode == LOCK_TYPE_SHARED
-            && lock->key != key && !lock_key_equals(lock, key)){
+    if(lock != nullptr && lock->lockMode == LOCK_TYPE_SHARED
+            && !lock_contains(lock, key)){
         // Ignore this if the compressed lock is not matched
         lock = nullptr;
     }
@@ -172,16 +174,16 @@ lock_t* lock_acquire(int64_t table_id, pagenum_t pagenum, int64_t key, int trx_i
     }
 
     // Check if it is possible to apply lock compression
-    if(commonLock != nullptr && prevLocks.empty()){
+    if(sharedLock != nullptr && prevLocks.empty()){
         std::cout << "Lock Compression will be applied " << trx_id << "," << key << std::endl;
-        commonLock->bitmap[keyIndex] = true;
-        commonLock->keyIndexMap->insert_or_assign(key, keyIndex);
+        sharedLock->bitmap[keyIndex] = true;
+        sharedLock->keyIndexMap->insert_or_assign(key, keyIndex);
 
         pthread_mutex_unlock(entry->getMutex());
         buffer_pin(table_id, pagenum);
 
         delete lock;
-        return commonLock;
+        return sharedLock;
     }
 
     // Append into the transaction
@@ -251,12 +253,12 @@ std::vector<lock_t*> lock_find_prev_locks(LockEntry* entry, lock_t* lock){
 
     while(prevLock != nullptr){
         // Skip conditions
-        if(!lock_key_equals(prevLock, lock->key)){
+        if(!lock_contains(prevLock, lock->key)){
             prevLock = prevLock->prev;
             continue;
 
-        }else if(lock_key_equals(prevLock, lock->key)
-                && prevLock->trxId == lock->trxId){
+        }else if(lock_contains(prevLock, lock->key)
+                 && prevLock->trxId == lock->trxId){
             prevLock = prevLock->prev;
             continue;
         }
@@ -286,7 +288,7 @@ std::vector<lock_t*> lock_find_prev_locks(LockEntry* entry, lock_t* lock){
     return locks;
 }
 
-bool lock_key_equals(lock_t* lock, int64_t key){
+bool lock_contains(lock_t* lock, int64_t key){
     if(lock->key == key){
         return true;
 

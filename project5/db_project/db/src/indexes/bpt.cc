@@ -273,10 +273,20 @@ int db_find(int64_t table_id, int64_t key, char* ret_val, uint16_t* val_size, in
         leafPage = new LeafPage(table_id, pagenum);
 
         lock_t* lock = lock_acquire(table_id, pagenum, key, trx_id, LOCK_TYPE_SHARED);
-        if(lock == nullptr)
-            throw std::runtime_error("Failed to acquire a lock");
+        if(lock == nullptr){
+            std::cout << "Failed to acquire a lock" << std::endl;
+            trx_rollback(trx_id);
+
+            delete leafPage;    // include unpin the buffer
+            return -4;
+        }
 
         // read value
+        // Then recall the leaf from the buffer
+        // It might be changed by an implicit lock
+        pagenum_t leafPagenum = leafPage->getPagenum();
+        delete leafPage;
+        leafPage = new LeafPage(table_id, leafPagenum);
         leafPage->readValue(key, ret_val, val_size);
 
     }catch(std::exception &e){
@@ -304,8 +314,13 @@ int db_update(int64_t table_id, int64_t key, char* values, uint16_t new_val_size
         // lock the record while the buffer is unlocked
         lock_t* lock = lock_acquire(table_id, leafPage->getPagenum(),
                             key, trx_id, LOCK_TYPE_EXCLUSIVE);
-        if(lock == nullptr)
-            throw std::runtime_error("Failed to acquire a lock");
+        if(lock == nullptr){
+            std::cout << "Failed to acquire a lock" << std::endl;
+            trx_rollback(trx_id);
+
+            delete leafPage;    // include unpin the buffer
+            return -4;
+        }
 
         // Then recall the leaf from the buffer
         // It might be changed by an implicit lock
