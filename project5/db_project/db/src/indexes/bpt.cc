@@ -282,11 +282,6 @@ int db_find(int64_t table_id, int64_t key, char* ret_val, uint16_t* val_size, in
         }
 
         // read value
-        // Then recall the leaf from the buffer
-        // It might be changed by an implicit lock
-        pagenum_t leafPagenum = leafPage->getPagenum();
-        delete leafPage;
-        leafPage = new LeafPage(table_id, leafPagenum);
         leafPage->readValue(key, ret_val, val_size);
 
     }catch(std::exception &e){

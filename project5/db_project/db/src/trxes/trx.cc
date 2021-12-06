@@ -88,18 +88,11 @@ lock_t* lock_acquire(int64_t table_id, pagenum_t pagenum, int64_t key, int trx_i
     lock_t* lock = trx_find_acquired_lock(trxContainer, trx_id, table_id, pagenum, key, lock_mode);
 
     // Search for implicit locks
-    lock_t* sharedLock = lock;
-    if(lock == nullptr){
+    if(lock == nullptr)
         lock = trx_find_acquired_lock(implicitContainer, trx_id, table_id, pagenum, key, lock_mode);
-        sharedLock = nullptr;
-    }
 
     // Keep the lock for the future lock compression
-    if(lock != nullptr && lock->lockMode == LOCK_TYPE_SHARED
-            && !lock_contains(lock, key)){
-        // Ignore this if the compressed lock is not matched
-        lock = nullptr;
-    }
+    lock_t* sharedLock = (lock != nullptr && lock->lockMode == LOCK_TYPE_EXCLUSIVE) ? nullptr : lock;
 
     // Early return if it is already acquired
     if(lock != nullptr){
@@ -376,6 +369,9 @@ lock_t* lock_to_explicit(int trx_id, lock_t* new_lock){
 }
 
 int lock_record(lock_t* lock_obj, char* org_value, uint16_t org_val_size){
+    if(lock_obj->isDirty)
+        return 0;
+
     lock_obj->org_value = new char[org_val_size];
     memcpy(lock_obj->org_value, org_value, org_val_size);
 
@@ -437,13 +433,12 @@ lock_t* trx_find_acquired_lock(TrxContainer* container, int trxId, int64_t table
     pthread_mutex_unlock(container->getMutex());
 
     while(lock != nullptr){
-        if(lock->sentinel->equals(table_id, pagenum)
+        if(lock_contains(lock, key)
+                && lock->sentinel->equals(table_id, pagenum)
                 && lock->isAcquired
                 && (lock->lockMode == lockMode
                     || lock->lockMode == LOCK_TYPE_EXCLUSIVE)){
-            if((lockMode == LOCK_TYPE_EXCLUSIVE && lock->key == key)
-                    || lockMode == LOCK_TYPE_SHARED)
-                break;
+            break;
         }
         lock = lock->trxNext;
     }

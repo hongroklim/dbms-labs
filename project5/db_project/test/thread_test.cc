@@ -19,8 +19,8 @@ static const std::string CHARACTERS {
 	"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"};
 
 int64_t table_id = 0;
-int THREAD_NUMBER = 4;
-int KEY_COUNT = 20;
+int THREAD_NUMBER = 2;
+int KEY_COUNT = 10;
 
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 int err_cnt = 0;
@@ -72,7 +72,7 @@ void* xlock_func(void* arg){
 
     int64_t key;
 	uint16_t tmp_val_size = 0;
-	for(int i=1; i<=KEY_COUNT; i++){
+	for(int i=1; i<=KEY_COUNT*2; i++){
         std::this_thread::sleep_for(std::chrono::milliseconds((trx_id*rand())%200+1));
 
         key = (rand()+trx_id)%KEY_COUNT+1;
