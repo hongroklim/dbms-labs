@@ -118,6 +118,7 @@ lock_t* lock_acquire(int64_t table_id, pagenum_t pagenum, int64_t key, int trx_i
     }
 
     // whether pass or wait?
+    lock->prev = nullptr;
     std::vector<lock_t*> prevLocks = lock_find_prev_locks(entry, lock);
     
     // When there is no explicit lock
@@ -139,8 +140,7 @@ lock_t* lock_acquire(int64_t table_id, pagenum_t pagenum, int64_t key, int trx_i
 
             if(entry->getTail() == nullptr){
                 prevLock->prev = nullptr;
-                entry->setTail(prevLock);
-            }else{
+            }else if(prevLock->prev != entry->getTail()){
                 prevLock->prev = entry->getTail();
                 prevLock->prev->next = prevLock;
             }
@@ -194,8 +194,11 @@ lock_t* lock_acquire(int64_t table_id, pagenum_t pagenum, int64_t key, int trx_i
     if(entry->getHead() == nullptr){
         // Set head and tail
         entry->setHead(lock);
-    }else{
-        // Append behind the tail
+    }
+
+    if(entry->getTail() == nullptr){
+        lock->prev = nullptr;
+    }else if(lock->prev != entry->getTail()){
         lock->prev = entry->getTail();
         lock->prev->next = lock;
     }
@@ -235,7 +238,7 @@ lock_t* lock_acquire(int64_t table_id, pagenum_t pagenum, int64_t key, int trx_i
         prevLock->waitCnt--;
         pthread_mutex_unlock(&prevLock->mutex);
 
-        if(prevLock->waitCnt == 0){
+        if(prevLock->waitCnt == 0 && trxContainer->isExist(prevLock->trxId)){
             delete prevLock;
         }
     }
@@ -394,15 +397,6 @@ int lock_release(lock_t* lock_obj) {
     //buffer_unpin(entry->getTableId(), entry->getPagenum());
     pthread_mutex_lock(entry->getMutex());
 
-    // Signal the descendants
-    pthread_mutex_lock(&lock_obj->mutex);
-
-    bool isWaits = lock_obj->waitCnt > 0;
-    lock_obj->isReleased = true;
-    pthread_cond_broadcast(&lock_obj->cond);
-
-    pthread_mutex_unlock(&lock_obj->mutex);
-
     // Modify the head and tail in the entry
     if(entry->getHead() == lock_obj)
         entry->setHead(lock_obj->next);
@@ -414,6 +408,20 @@ int lock_release(lock_t* lock_obj) {
         lock_obj->prev->next = lock_obj->next;
     if(lock_obj->next != nullptr)
         lock_obj->next->prev = lock_obj->prev;
+
+    // subtract the waiting count
+    std::vector<lock_t*> prevLocks = lock_find_prev_locks(entry, lock_obj);
+    if(!prevLocks.empty())
+        prevLocks.front()->waitCnt--;
+
+    // Signal the descendants
+    pthread_mutex_lock(&lock_obj->mutex);
+
+    bool isWaits = lock_obj->waitCnt > 0;
+    lock_obj->isReleased = true;
+    pthread_cond_broadcast(&lock_obj->cond);
+
+    pthread_mutex_unlock(&lock_obj->mutex);
 
     // Delete itself
     if(!isWaits)
