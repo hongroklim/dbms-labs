@@ -166,13 +166,13 @@ void buffer_free_page(int64_t table_id, pagenum_t pagenum){
 
 // Read an in-memory page into the in-memory page structure(dest)
 void buffer_read_page(int64_t table_id, uint64_t pagenum, page_t* dest){
-    // lock the Buffer Manager first
-    pthread_mutex_lock(&bf->mutex);
-
     block_t* block;
     try{
         // find in buffer blocks first
         block = buffer_find_block(table_id, pagenum);
+
+        // lock the Buffer Manager first
+        pthread_mutex_lock(&bf->mutex);
 
         // if not exists
         if(block == nullptr){
@@ -225,16 +225,21 @@ void buffer_write_page(int64_t table_id, uint64_t pagenum, const page_t* src){
 }
 
 block_t* buffer_find_block(int64_t table_id, uint64_t pagenum){
+    // lock the Buffer Manager first
+    pthread_mutex_lock(&bf->mutex);
+
     block_t* block = bf->headBlock;
 
     while(block != nullptr){
         if(block->pagenum == pagenum && block->table_id == table_id){
+            pthread_mutex_unlock(&bf->mutex);
             return block;
         }else{
             block = block->next;
         }
     }
 
+    pthread_mutex_unlock(&bf->mutex);
     return nullptr;
 }
 

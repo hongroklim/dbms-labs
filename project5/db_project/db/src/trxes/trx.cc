@@ -390,7 +390,7 @@ int lock_record(lock_t* lock_obj, char* org_value, uint16_t org_val_size){
     return 0;
 }
 
-int lock_release(lock_t* lock_obj) {
+int lock_release(lock_t* lock_obj, bool isCommit) {
     LockEntry* entry = lock_obj->sentinel;
 
     // Lock the entry
@@ -398,30 +398,35 @@ int lock_release(lock_t* lock_obj) {
     pthread_mutex_lock(entry->getMutex());
 
     // Modify the head and tail in the entry
-    if(entry->getHead() == lock_obj)
+    if(entry->getHead() == lock_obj){
         entry->setHead(lock_obj->next);
-    if(entry->getTail() == lock_obj)
+    }
+
+    if(entry->getTail() == lock_obj){
         entry->setTail(lock_obj->prev);
+    }
 
     // Modify neighbor's reference
-    if(lock_obj->prev != nullptr)
-        lock_obj->prev->next = lock_obj->next;
     if(lock_obj->next != nullptr)
-        lock_obj->next->prev = lock_obj->prev;
+        lock_obj->next->prev = nullptr;
 
-    // subtract the waiting count
-    std::vector<lock_t*> prevLocks = lock_find_prev_locks(entry, lock_obj);
-    if(!prevLocks.empty())
-        prevLocks.front()->waitCnt--;
+    if(lock_obj->prev != nullptr)
+        lock_obj->prev->next = nullptr;
 
     // Signal the descendants
-    pthread_mutex_lock(&lock_obj->mutex);
+    bool isWaits = false;
+    if(isCommit || lock_obj->isAcquired){
+        pthread_mutex_lock(&lock_obj->mutex);
 
-    bool isWaits = lock_obj->waitCnt > 0;
-    lock_obj->isReleased = true;
-    pthread_cond_broadcast(&lock_obj->cond);
+        isWaits = lock_obj->waitCnt > 0;
+        lock_obj->isReleased = true;
+        pthread_cond_broadcast(&lock_obj->cond);
 
-    pthread_mutex_unlock(&lock_obj->mutex);
+        pthread_mutex_unlock(&lock_obj->mutex);
+
+    }else if(!lock_obj->isAcquired){
+        std::cout << "Abort Gracefully" << std::endl;
+    }
 
     // Delete itself
     if(!isWaits)
@@ -534,7 +539,7 @@ int trx_rollback(TrxContainer* container, int trx_id, bool canRelease){
 
         // Release or delete
         if(canRelease)
-            lock_release(lock);
+            lock_release(lock, false);
         else
             delete lock;
 
@@ -568,7 +573,7 @@ int trx_commit(TrxContainer* container, int trx_id, bool canRelease){
         tmpLock = lock->trxNext;
 
         if(canRelease)
-            lock_release(lock);
+            lock_release(lock, true);
         else
             delete lock;
 

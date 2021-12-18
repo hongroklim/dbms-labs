@@ -37,7 +37,7 @@ lock_t* lock_to_explicit(int trx_id, lock_t* lock_obj);
 
 int lock_record(lock_t* lock_obj, char* org_value, uint16_t org_val_size);
 
-int lock_release(lock_t* lock_obj);
+int lock_release(lock_t* lock_obj, bool isCommit);
 
 /*
  * Allocate a transaction structure and initialize it.

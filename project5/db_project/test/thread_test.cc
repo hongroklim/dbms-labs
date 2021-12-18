@@ -19,7 +19,7 @@ static const std::string CHARACTERS {
 	"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"};
 
 int64_t table_id = 0;
-int THREAD_NUMBER = 10;
+int THREAD_NUMBER = 30;
 int KEY_COUNT = 3;
 
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -75,10 +75,10 @@ void* xlock_func(void* arg){
 
     int64_t key;
 	uint16_t tmp_val_size = 0;
-	for(int i=1; i<=KEY_COUNT*2; i++){
+	for(int i=1; i<=KEY_COUNT; i++){
         std::this_thread::sleep_for(std::chrono::milliseconds((trx_id*rand())%200+1));
 
-        key = (rand()+trx_id)%KEY_COUNT+1;
+        key = (rand()+trx_id*trx_id)%KEY_COUNT+1;
         std::cout << "X     try " << trx_id << "," << key << std::endl;
 
 		if(db_update(table_id, key, const_cast<char*>(
@@ -114,8 +114,8 @@ void* mlock_func(void* arg){
     char* tml_val = new char[108];
     uint16_t tmp_val_size = 0;
 
-    for(int i=1; i<=2*KEY_COUNT; i++){
-        std::this_thread::sleep_for(std::chrono::milliseconds((trx_id*rand())%10+1));
+    for(int i=1; i<=5*KEY_COUNT; i++){
+        std::this_thread::sleep_for(std::chrono::milliseconds((trx_id*rand())%100+1));
         key = (rand()+trx_id*trx_id)%KEY_COUNT+1;
 
         if(rand()%2 == 0){
@@ -178,7 +178,6 @@ TEST(MainTest, main){
 		pthread_join(threads[i], nullptr);
     std::cout << "[SLOCK END]" << std::endl;
 
-
     std::cout << "[XLOCK START]" << std::endl;
     for (long i = 0; i < THREAD_NUMBER; i++)
         pthread_create(&threads[i], 0, xlock_func, (void*)i);
@@ -188,6 +187,7 @@ TEST(MainTest, main){
     std::cout << "[XLOCK END]" << std::endl;
     */
 
+
     std::cout << "[MLOCK START]" << std::endl;
     for (long i = 0; i < THREAD_NUMBER; i++)
         pthread_create(&threads[i], 0, mlock_func, (void*)i);
@@ -195,6 +195,7 @@ TEST(MainTest, main){
     for (long i = 0; i < THREAD_NUMBER; i++)
         pthread_join(threads[i], nullptr);
     std::cout << "[MLOCK END]" << std::endl;
+
 
 	shutdown_db();
 	std::cout << "[EXECUTE FINISHED]" << std::endl;
