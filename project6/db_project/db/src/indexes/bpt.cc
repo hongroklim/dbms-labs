@@ -9,6 +9,7 @@
 #include "indexes/InternalPage.h"
 #include "indexes/LeafPage.h"
 #include "trxes/trx.h"
+#include "logs/log.h"
 
 std::set<std::string> tbl_list;
 
@@ -44,13 +45,18 @@ void internal_delete_leftmost(int64_t table_id, pagenum_t pagenum);
  * The total number of tables is less than 20.
  * If success, return 0. Otherwise, return non-zero value.
  */
-int init_db(int num_buf){
+int init_db(int num_buf, int flag, int log_num, char* log_path, char* logmsg_path){
     if(buffer_init(num_buf) != 0){
         std::cout << "failed to initialize buffer manager" << std::endl;
         return -1;
     }
 
-    if(init_lock_table() != 0){
+    if(log_init(flag, log_num, log_path, logmsg_path) != 0){
+        std::cout << "failed to initialize logging manager" << std::endl;
+        return -2;
+    }
+
+    if(lock_init() != 0){
         std::cout << "failed to initialize transaction manager" << std::endl;
         return -2;
     }
@@ -305,6 +311,7 @@ int db_update(int64_t table_id, int64_t key, char* values, uint16_t new_val_size
             // if not exists, return failure
             return -3;
         }
+        pagenum_t leafPagenum = leafPage->getPagenum();
 
         // lock the record while the buffer is unlocked
         lock_t* lock = lock_acquire(table_id, leafPage->getPagenum(),
@@ -319,20 +326,14 @@ int db_update(int64_t table_id, int64_t key, char* values, uint16_t new_val_size
 
         // Then recall the leaf from the buffer
         // It might be changed by an implicit lock
-        pagenum_t leafPagenum = leafPage->getPagenum();
         delete leafPage;
         leafPage = new LeafPage(table_id, leafPagenum);
 
-        // keep the original value
-        char org_value[108];
-        uint16_t org_val_size = 0;
-        
-        leafPage->readValue(key, org_value, &org_val_size);
-        lock_record(lock, org_value, org_val_size);
-        *old_val_size = org_val_size;
+        // Logging for update
+        uint64_t lsn = log_update(leafPage, key, trx_id, values, new_val_size, old_val_size);
 
         // update
-        leafPage->update(key, values, new_val_size);
+        leafPage->update(key, values, new_val_size, lsn);
         leafPage->save();
 
     }catch(std::exception &e){
@@ -394,24 +395,6 @@ int db_key_index(int64_t table_id, uint64_t pagenum, int64_t key){
 
     delete leafPage;
     return keyIndex;
-}
-
-int db_undo(int64_t table_id, pagenum_t pagenum, int64_t key,
-        char* org_value, uint16_t org_val_size){
-    LeafPage* leafPage = new LeafPage(table_id, pagenum);
-
-    try{
-        uint16_t tmp_val_size = 0;
-        leafPage->update(key, org_value, org_val_size);
-        leafPage->save();
-
-    }catch(std::exception &e){
-        std::cout << e.what() << std::endl;
-        return -1;
-    }
-
-    delete leafPage;
-    return 0;
 }
 
 LeafPage* node_find_candidate_leaf(int64_t table_id, int64_t key, bool isExact){
@@ -685,12 +668,16 @@ void internal_delete_leftmost(int64_t table_id, pagenum_t pagenum){
  * If success, return 0. Otherwise, return non-zero value.
  */
 int shutdown_db(){
-    // TODO free pathname list
     tbl_list.clear();
 
-    if(buffer_shutdown() != 0){
+    if(buffer_shutdown() != 0)
         return -2;
-    }
+
+    if(log_shutdown() != 0)
+        return -3;
+
+    if(lock_shutdown() != 0)
+        return -4;
 
     try{
         buffer_close_table_files();

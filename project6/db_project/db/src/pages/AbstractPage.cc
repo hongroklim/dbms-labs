@@ -68,6 +68,16 @@ void AbstractPage::setPagenum(pagenum_t p_pagenum){
     pagenum = p_pagenum;
 }
 
+void AbstractPage::setPageLsn(uint64_t pageLsn){
+    page_write_value(page, 24, &pageLsn, sizeof(uint64_t));
+}
+
+uint64_t AbstractPage::getPageLsn(){
+    uint64_t pageLsn = 0;
+    page_read_value(page, 24, &pageLsn, sizeof(uint64_t));
+    return pageLsn;
+}
+
 void AbstractPage::save(){
     buffer_write_page(table_id, pagenum, page);
 }

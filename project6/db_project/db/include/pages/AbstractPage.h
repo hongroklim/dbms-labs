@@ -31,6 +31,9 @@ public:
     int64_t getTableId();
     pagenum_t getPagenum();
 
+    void setPageLsn(uint64_t pageLsn);
+    uint64_t getPageLsn();
+
     void save();
     void drop();
 };

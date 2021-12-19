@@ -3,10 +3,10 @@
 #include <iostream>
 #include <vector>
 #include <algorithm>
-#include <cstring>
 #include "buffers/buffer.h"
 #include "trxes/LockContainer.h"
 #include "trxes/TrxContainer.h"
+#include "logs/log.h"
 
 #include "indexes/bpt.h"
 
@@ -33,19 +33,11 @@ struct lock_t {
     bool* bitmap{};
     std::map<int64_t, int>* keyIndexMap{};
 
-    // TODO extract into logs
-    bool isDirty = false;
-    char* org_value{};
-    int org_val_size = 0;
-
     ~lock_t(){
         if(lockMode == LOCK_TYPE_SHARED){
             delete[] bitmap;
             delete keyIndexMap;
         }
-
-        if(isDirty && org_val_size > 0)
-            delete[] org_value;
     }
 };
 
@@ -63,12 +55,18 @@ bool trx_dead_lock(int trxId, std::vector<lock_t*> prevLocks);
 int trx_append_lock(TrxContainer* container, int trxId, lock_t* newLock);
 
 // Methods
-int init_lock_table() {
+int lock_init() {
     lockContainer = new LockContainer();
     trxContainer = new TrxContainer();
     implicitContainer = new TrxContainer();
 
     return 0;
+}
+
+int lock_shutdown(){
+    delete lockContainer;
+    delete trxContainer;
+    delete implicitContainer;
 }
 
 lock_t* lock_acquire(int64_t table_id, pagenum_t pagenum, int64_t key, int trx_id, int lock_mode){
@@ -79,9 +77,6 @@ lock_t* lock_acquire(int64_t table_id, pagenum_t pagenum, int64_t key, int trx_i
 
     // Get key index
     int keyIndex = db_key_index(table_id, pagenum, key);
-
-    // Unpin first
-    buffer_unpin(table_id, pagenum);
 
     // Get the corresponding entry then lock
     LockEntry* entry = lockContainer->getOrInsert(table_id, pagenum);
@@ -100,7 +95,6 @@ lock_t* lock_acquire(int64_t table_id, pagenum_t pagenum, int64_t key, int trx_i
     // Early return if it is already acquired
     if(lock != nullptr){
         pthread_mutex_unlock(entry->getMutex());
-        buffer_pin(table_id, pagenum);
         return lock;
     }
 
@@ -125,7 +119,6 @@ lock_t* lock_acquire(int64_t table_id, pagenum_t pagenum, int64_t key, int trx_i
     if(prevLocks.empty()){
         // Pin the page first
         pthread_mutex_unlock(entry->getMutex());
-        buffer_pin(table_id, pagenum);
 
         // Lookup and Trial of implicit lock
         lock_t* prevLock = lock_implicit(lock);
@@ -166,7 +159,6 @@ lock_t* lock_acquire(int64_t table_id, pagenum_t pagenum, int64_t key, int trx_i
         std::cout << "Deadlock detected for " << trx_id << "," << key << std::endl;
 
         pthread_mutex_unlock(entry->getMutex());
-        buffer_pin(table_id, pagenum);
 
         delete lock;
         return nullptr;
@@ -179,7 +171,6 @@ lock_t* lock_acquire(int64_t table_id, pagenum_t pagenum, int64_t key, int trx_i
         sharedLock->keyIndexMap->insert_or_assign(key, keyIndex);
 
         pthread_mutex_unlock(entry->getMutex());
-        buffer_pin(table_id, pagenum);
 
         delete lock;
         return sharedLock;
@@ -212,7 +203,6 @@ lock_t* lock_acquire(int64_t table_id, pagenum_t pagenum, int64_t key, int trx_i
     // Early return when no waiting
     if(prevLocks.empty()){
         lock->isAcquired = true;
-        buffer_pin(table_id, pagenum);
 
         return lock;
     }
@@ -244,7 +234,6 @@ lock_t* lock_acquire(int64_t table_id, pagenum_t pagenum, int64_t key, int trx_i
     }
 
     lock->isAcquired = true;
-    buffer_pin(table_id, pagenum);
     return lock;
 }
 
@@ -377,19 +366,6 @@ lock_t* lock_to_explicit(int trx_id, lock_t* new_lock){
     return prevLock;
 }
 
-int lock_record(lock_t* lock_obj, char* org_value, uint16_t org_val_size){
-    if(lock_obj->isDirty)
-        return 0;
-
-    lock_obj->org_value = new char[org_val_size];
-    memcpy(lock_obj->org_value, org_value, org_val_size);
-
-    lock_obj->org_val_size = org_val_size;
-    lock_obj->isDirty = true;
-
-    return 0;
-}
-
 int lock_release(lock_t* lock_obj, bool isCommit) {
     LockEntry* entry = lock_obj->sentinel;
 
@@ -434,7 +410,6 @@ int lock_release(lock_t* lock_obj, bool isCommit) {
 
     // Unlock the entry
     pthread_mutex_unlock(entry->getMutex());
-    //buffer_pin(entry->getTableId(), entry->getPagenum());
 
     return 0;
 }
@@ -442,6 +417,10 @@ int lock_release(lock_t* lock_obj, bool isCommit) {
 int trx_begin(void){
     int trxId = trxContainer->put();
     implicitContainer->put(trxId);
+
+    // Logging
+    log_begin(trxId);
+
     return trxId;
 }
 
@@ -520,7 +499,7 @@ bool trx_dead_lock(int trxId, std::vector<lock_t*> prevLocks){
     return false;
 }
 
-int trx_rollback(TrxContainer* container, int trx_id, bool canRelease){
+int trx_abort(TrxContainer* container, int trx_id, bool canRelease){
     pthread_mutex_lock(container->getMutex());
     lock_t* lock = container->getHead(trx_id);
     pthread_mutex_unlock(container->getMutex());
@@ -529,13 +508,6 @@ int trx_rollback(TrxContainer* container, int trx_id, bool canRelease){
     lock_t* tmpLock{};
     while(lock != nullptr){
         tmpLock = lock->trxNext;
-        
-        // If the lock is X and dirty
-        if(lock->lockMode == LOCK_TYPE_EXCLUSIVE && lock->isDirty){
-            uint16_t temp_val_size = 0;
-            db_undo(lock->sentinel->getTableId(), lock->sentinel->getPagenum(),
-            lock->key, lock->org_value, lock->org_val_size);
-        }
 
         // Release or delete
         if(canRelease)
@@ -555,10 +527,11 @@ int trx_rollback(TrxContainer* container, int trx_id, bool canRelease){
 }
 
 int trx_abort(int trx_id){
-    
-    trx_rollback(trxContainer, trx_id, true);
-    trx_rollback(implicitContainer, trx_id, false);
-    
+    trx_abort(trxContainer, trx_id, true);
+    trx_abort(implicitContainer, trx_id, false);
+
+    log_abort(trx_id);
+
     return trx_id;
 }
 
@@ -589,46 +562,10 @@ int trx_commit(TrxContainer* container, int trx_id, bool canRelease){
 }
 
 int trx_commit(int trx_id){
-    
     trx_commit(trxContainer, trx_id, true);
     trx_commit(implicitContainer, trx_id, false);
 
+    log_commit(trx_id);
+
     return trx_id;
-}
-
-struct lock_test_info_t {
-    int64_t table_id = 1;
-    pagenum_t pagenum = 1;
-    std::vector<int> trx;
-};
-
-lock_test_info_t lockTest;
-
-void lock_test_append(int64_t key, int trx_id, int lock_mode, bool isAcquired){
-    if(std::find(lockTest.trx.begin(), lockTest.trx.end(), trx_id) == lockTest.trx.end()){
-        lockTest.trx.push_back(trx_id);
-    }
-
-    LockEntry* entry = lockContainer->getOrInsert(lockTest.table_id, lockTest.pagenum);
-    lock_t* lock = new lock_t{key, lock_mode, entry->getTail(), nullptr, entry, isAcquired};
-    trx_append_lock(trxContainer, trx_id, lock);
-
-    // Check the ancestor
-    if(entry->getHead() == nullptr){
-        // Set head and tail
-        entry->setHead(lock);
-
-    }else{
-        // Append behind the tail
-        entry->getTail()->next = lock;
-    }
-
-    // Append the last
-    entry->setTail(lock);
-}
-
-void lock_test_clear(){
-    for(auto trxId : lockTest.trx){
-        trx_commit(trxId);
-    }
 }

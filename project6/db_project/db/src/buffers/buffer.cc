@@ -4,6 +4,7 @@
 #include <iomanip>
 
 #include "files/file.h"
+#include "logs/log.h"
 #include "headers/BufferHeaderSource.h"
 
 buf_ctrl_t* bf;
@@ -262,17 +263,6 @@ int buffer_pin(block_t* block){
     return 0;
 }
 
-int buffer_pin(int64_t table_id, pagenum_t pagenum){
-    block_t* block = buffer_find_block(table_id, pagenum);
-    if(block != nullptr){
-        buffer_pin(block);
-    }else{
-        std::cout << "[pin] failed to find buffer of " << pagenum  << " (pagenum)" << std::endl;
-    }
-
-    return 0;
-}
-
 // Remove a pin of buffer block
 int buffer_unpin(int64_t table_id, uint64_t pagenum){
     // TODO debug
@@ -301,6 +291,7 @@ int buffer_unpin(int64_t table_id, uint64_t pagenum){
 // Write buffer into file system and clear
 int buffer_flush(block_t* block){
     if(block->is_dirty){
+        log_flush();
         file_write_page(block->table_id, block->pagenum, block->page);
     }
 

@@ -191,7 +191,7 @@ void LeafPage::split(uint splitIndex, LeafPage* newLeaf){
     setRightPagenum(newLeaf->getPagenum());
 }
 
-void LeafPage::update(int64_t key, char* values, uint16_t new_val_size){
+void LeafPage::update(int64_t key, char* values, uint16_t new_val_size, uint64_t pageLsn){
     // find the matched slot
     slot s = getSlot(getSlotIndex(key));
 
@@ -201,6 +201,15 @@ void LeafPage::update(int64_t key, char* values, uint16_t new_val_size){
     // set new val size
     s.val_size = new_val_size;
     setSlot(s);
+
+    // update lsn
+    setPageLsn(pageLsn);
+}
+
+void LeafPage::updateByOffset(uint16_t offset, char *values, uint16_t valSize, uint64_t pageLsn){
+    // set new value
+    page_write_value(page, offset, values, valSize);
+    setPageLsn(pageLsn);
 }
 
 void LeafPage::del(slot s){
@@ -282,7 +291,7 @@ void LeafPage::readValue(slot s, char* ret_val){
     page_read_value(page, s.offset, ret_val, s.val_size);
 }
 
-void LeafPage::readValue(int64_t key, char* ret_val, uint16_t* val_size){
+void LeafPage::readValue(int64_t key, char* ret_val, uint16_t* val_size, uint16_t* offset){
     // find slot
     slot s = getSlot(getSlotIndex(key));
 
@@ -291,6 +300,11 @@ void LeafPage::readValue(int64_t key, char* ret_val, uint16_t* val_size){
 
     // set offset
     *val_size = s.val_size;
+}
+
+void LeafPage::readValue(int64_t key, char* ret_val, uint16_t* val_size){
+    uint16_t tmpVal = 0;
+    readValue(key, ret_val, val_size, &tmpVal);
 }
 
 bool LeafPage::isMergeAvailable(LeafPage* toBeMerged){

@@ -55,9 +55,11 @@ public:
     void insert(int64_t key, char* value, uint16_t val_size);
     void split(uint splitIndex, LeafPage* newLeaf);
 
-    void update(int64_t key, char* values, uint16_t new_val_size);
+    void update(int64_t key, char* values, uint16_t new_val_size, uint64_t pageLsn);
+    void updateByOffset(uint16_t offset, char *values, uint16_t valSize, uint64_t pageLsn);
 
     void readValue(int64_t key, char* ret_val, uint16_t* val_size);
+    void readValue(int64_t key, char* ret_val, uint16_t* val_size, uint16_t* offset);
 
     void del(int64_t key) override;
 

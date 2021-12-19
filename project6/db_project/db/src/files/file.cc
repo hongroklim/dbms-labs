@@ -31,12 +31,11 @@ int64_t file_open_table_file(const char* pathname){
         fd_holder->construct();
     }
 
-    int64_t table_id = fd_holder->get_table_id(pathname);
-    if(table_id > 0){
+    if(fd_holder->is_table_exists(pathname)){
         // file has already opened
         std::cout << pathname << " has been already opened."
                   <<" return existing fd." << std::endl;
-        return table_id;
+        return fd_holder->get_table_id(pathname);
     }
 
     // open file in R/W, SYNC and create if no exist
@@ -52,7 +51,7 @@ int64_t file_open_table_file(const char* pathname){
     }
 
     // save pathname and fd
-    table_id = fd_holder->insert(pathname, fd);
+    int64_t table_id = fd_holder->insert(pathname, fd);
 
     if(!file_is_initialized(table_id)){
         // clear file first

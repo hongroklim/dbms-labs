@@ -20,6 +20,9 @@ set(DB_SOURCES
   ${DB_SOURCE_DIR}/trxes/LockContainer.cc
   ${DB_SOURCE_DIR}/trxes/LockEntry.cc
   ${DB_SOURCE_DIR}/logs/log.cc
+        ${DB_SOURCE_DIR}/logs/LogRecord.cc
+        ${DB_SOURCE_DIR}/logs/LogBuffer.cc
+        ${DB_SOURCE_DIR}/logs/LogFile.cc
   )
 
 # Headers
@@ -44,6 +47,9 @@ set(DB_HEADERS
   ${DB_HEADER_DIR}/trxes/LockContainer.h
   ${DB_HEADER_DIR}/trxes/LockEntry.h
   ${DB_HEADER_DIR}/logs/log.h
+        ${DB_HEADER_DIR}/logs/LogRecord.h
+        ${DB_HEADER_DIR}/logs/LogBuffer.h
+        ${DB_HEADER_DIR}/logs/LogFile.h
   )
 
 add_library(db STATIC ${DB_HEADERS} ${DB_SOURCES})

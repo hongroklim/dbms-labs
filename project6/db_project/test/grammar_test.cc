@@ -184,3 +184,9 @@ TEST(VectorLoopTest, test){
     }
     std::cout << std::endl;
 }
+
+TEST(SubstrTest, test){
+    std::cout << sizeof(int) << std::endl;
+    EXPECT_EQ(std::stoi(std::string("DATA1").substr(4)), 1);
+    EXPECT_EQ(std::stoi(std::string("DATA12").substr(4)), 12);
+}

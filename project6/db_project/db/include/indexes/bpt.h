@@ -47,9 +47,6 @@ void db_write_trx(int64_t table_id, uint64_t pagenum, int64_t key, int trx_id);
 
 int db_key_index(int64_t table_id, uint64_t pagenum, int64_t key);
 
-int db_undo(int64_t table_id, uint64_t pagenum,
-        int64_t key, char* org_value, uint16_t org_val_size);
-
 /*
  * Initialize your database management system.
  * Initialize and allocate anything you need.

@@ -93,7 +93,6 @@ bool buffer_is_pinned(block_t* block);
 
 // Pin the buffer block
 int buffer_pin(block_t* block);
-int buffer_pin(int64_t table_id, pagenum_t pagenum);
 
 // Remove a pin of buffer block
 int buffer_unpin(int64_t table_id, pagenum_t pagenum);
